@@ -24,7 +24,7 @@ export const botConfig = {
     activities: [
       {
         name: "Custom Status", // required by Discord API, not shown in the client
-        state: "stalking",     // this is what people actually see
+        state: "thinking about you",     // this is what people actually see
         type: 4,               // Custom
       },
     ],
@@ -93,7 +93,7 @@ export const botConfig = {
   embeds: {
     colors: {
       // Main brand colors.
-      primary: "#336699",
+      primary: "#0059ff",
       secondary: "#2F3136",
 
       // Standard status colors for success/error/warning/info messages.
@@ -141,17 +141,17 @@ export const botConfig = {
     },
     footer: {
       // Default footer text used in bot embeds.
-      text: "Titan Bot",
+      text: "HIOS Assistant",
       // Footer icon URL (null = no icon).
-      icon: null,
+      icon: "https://i.pinimg.com/736x/7b/73/33/7b733343a59487ddc95f66e5976878cd.jpg",
     },
     // Default thumbnail URL for embeds (null = no thumbnail).
-    thumbnail: null,
+    thumbnail: "https://i.pinimg.com/736x/7b/73/33/7b733343a59487ddc95f66e5976878cd.jpg",
     author: {
       // Optional default embed author block.
-      name: null,
-      icon: null,
-      url: null,
+      name: "HIOS Developers",
+      icon: "https://i.pinimg.com/736x/7b/73/33/7b733343a59487ddc95f66e5976878cd.jpg",
+      url: "https://rafiprofile.my.id/",
     },
   },
 
