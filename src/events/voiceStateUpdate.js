@@ -9,6 +9,7 @@ import {
 import { sanitizeInput } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { handleMusicVoiceState } from '../services/music/musicVoiceState.js';
+import { enforceWaitingRoom } from '../services/tempvoiceInterface.js';
 
 const channelCreationCooldown = new Map();
 const VOICE_CREATE_COOLDOWN_MS = 2000;
@@ -34,6 +35,16 @@ export default {
 
             if (!config.enabled || config.triggerChannels.length === 0) {
                 return;
+            }
+
+            // TempVoice waiting room: bounce untrusted joiners into the waiting
+            // room channel. When a redirect happens, skip the rest of this event
+            // (the follow-up move event is handled normally).
+            if (newState.channel) {
+                const redirected = await enforceWaitingRoom(client, oldState, newState, config);
+                if (redirected) {
+                    return;
+                }
             }
 
             if (!oldState.channel && newState.channel) {
@@ -241,6 +252,17 @@ userLimit: userLimit === 0 ? undefined : userLimit,
 
         async function deleteTemporaryChannel(client, channel, guildId) {
             try {
+                // TempVoice: remove the waiting room first, if one exists.
+                const tempInfo = await getTemporaryChannelInfo(client, guildId, channel.id).catch(() => null);
+                const wrChannelId = tempInfo?.waitingRoom?.channelId;
+                if (wrChannelId) {
+                    const wrChannel = channel.guild.channels.cache.get(wrChannelId)
+                        ?? await channel.guild.channels.fetch(wrChannelId).catch(() => null);
+                    if (wrChannel) {
+                        await wrChannel.delete('TempVoice waiting room cleanup').catch(() => {});
+                    }
+                }
+
                 await unregisterTemporaryChannel(client, guildId, channel.id);
 
                 await channel.delete('Temporary voice channel - empty');

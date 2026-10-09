@@ -13,6 +13,7 @@ import {
     logConfigurationChange,
     getConfiguration
 } from '../../services/joinToCreateService.js';
+import { ensureInterfacePanel } from '../../services/tempvoiceInterface.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -199,6 +200,15 @@ async function handleSetupSubcommand(interaction, client) {
 
         logger.info(`Successfully created Join to Create system in guild ${guildId}`);
 
+        let interfaceLine = '';
+        try {
+            const panel = await ensureInterfacePanel(client, interaction.guild, category?.id ?? null);
+            interfaceLine = `\n• Control Panel: ${panel.channel} ${panel.created ? '(created)' : '(updated)'}`;
+        } catch (panelError) {
+            logger.warn(`TempVoice interface panel setup failed in guild ${guildId}: ${panelError.message}`);
+            interfaceLine = '\n• Control Panel: ⚠️ could not be created — check bot permissions (Manage Channels).';
+        }
+
         const responseEmbed = successEmbed(
             '✅ Setup Complete',
             `Created Join to Create channel: ${triggerChannel}\n\n` +
@@ -206,7 +216,7 @@ async function handleSetupSubcommand(interaction, client) {
             `• Template: \`${nameTemplate}\`\n` +
             `• User Limit: ${userLimit === 0 ? 'Unlimited' : userLimit + ' users'}\n` +
             `• Bitrate: ${bitrate} kbps\n` +
-            `${category ?`• Category: ${category.name}`: '• Category: Root level'}`
+            `${category ?`• Category: ${category.name}`: '• Category: Root level'}${interfaceLine}`
         );
 
         return await InteractionHelper.safeEditReply(interaction, { embeds: [responseEmbed] });

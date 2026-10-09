@@ -1134,7 +1134,13 @@ export async function registerTemporaryChannel(client, guildId, channelId, owner
         config.temporaryChannels[channelId] = {
             ownerId,
             triggerChannelId,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            // TempVoice interface state (see src/services/tempvoiceInterface.js)
+            trusted: [],
+            blocked: [],
+            locked: false,
+            chatEnabled: true,
+            waitingRoom: null
         };
         
         return await saveJoinToCreateConfig(client, guildId, config);
@@ -1167,6 +1173,28 @@ export async function getTemporaryChannelInfo(client, guildId, channelId) {
     } catch (error) {
         logger.error(`Error getting temporary channel info for guild ${guildId}:`, error);
         return null;
+    }
+}
+
+export async function updateTemporaryChannelInfo(client, guildId, channelId, updates) {
+    try {
+        const config = await getJoinToCreateConfig(client, guildId);
+
+        if (!config.temporaryChannels[channelId]) {
+            logger.warn(`Cannot update temp channel ${channelId}: not registered in guild ${guildId}`);
+            return false;
+        }
+
+        config.temporaryChannels[channelId] = {
+            ...config.temporaryChannels[channelId],
+            ...updates,
+            updatedAt: Date.now()
+        };
+
+        return await saveJoinToCreateConfig(client, guildId, config);
+    } catch (error) {
+        logger.error(`Error updating temporary channel info for guild ${guildId}:`, error);
+        return false;
     }
 }
 
