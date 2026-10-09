@@ -1,5 +1,6 @@
 // xpSystem.js
 
+import { EmbedBuilder } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { getLevelingConfig, getXpForLevel, getUserLevelData, saveUserLevelData } from './leveling.js';
 import { logEvent, EVENT_TYPES } from '../loggingService.js';
@@ -49,7 +50,7 @@ export const addXp = wrapServiceBoundary(async function addXp(client, guild, mem
 
     if (didLevelUp) {
       if (config.announceLevelUp) {
-        await sendLevelUpAnnouncement(guild, member, levelData, config);
+        await sendLevelUpAnnouncement(guild, member, levelData, config, initialLevel);
       }
 
       try {
@@ -109,7 +110,22 @@ async function awardRoleReward(guild, member, roleId, level) {
   }
 }
 
-async function sendLevelUpAnnouncement(guild, member, levelData, config) {
+const DEFAULT_LEVELUP_COLOR = '#FFC107';
+
+/**
+ * Validate a hex color string. Falls back to the default gold on invalid input.
+ */
+function resolveLevelUpColor(raw) {
+  if (typeof raw === 'string') {
+    const normalized = raw.startsWith('#') ? raw : `#${raw}`;
+    if (/^#[0-9A-Fa-f]{6}$/.test(normalized)) {
+      return normalized.toUpperCase();
+    }
+  }
+  return DEFAULT_LEVELUP_COLOR;
+}
+
+async function sendLevelUpAnnouncement(guild, member, levelData, config, initialLevel) {
   try {
     const levelUpChannel = config.levelUpChannel
       ? guild.channels.cache.get(config.levelUpChannel)
@@ -125,13 +141,24 @@ async function sendLevelUpAnnouncement(guild, member, levelData, config) {
       return;
     }
 
-    const message = config.levelUpMessage
-      .replace(/{user}/g, member.toString())
-      .replace(/{level}/g, levelData.level)
-      .replace(/{xp}/g, levelData.xp)
-      .replace(/{xpNeeded}/g, getXpForLevel(levelData.level + 1));
+    const oldLevel = Number.isInteger(initialLevel) ? initialLevel : levelData.level;
+    const newLevel = levelData.level;
 
-    await levelUpChannel.send(message).catch(error => {
+    const description = config.levelUpMessage
+      .replace(/{user}/g, member.toString())
+      .replace(/{level}/g, newLevel)
+      .replace(/{xp}/g, levelData.xp)
+      .replace(/{xpNeeded}/g, getXpForLevel(newLevel + 1));
+
+    const embed = new EmbedBuilder()
+      .setColor(resolveLevelUpColor(config.levelUpColor))
+      .setTitle('🎉 Level Up!')
+      .setDescription(description)
+      .setThumbnail(member.displayAvatarURL({ size: 256 }))
+      .setFooter({ text: `Level ${oldLevel} → ${newLevel}` })
+      .setTimestamp();
+
+    await levelUpChannel.send({ embeds: [embed] }).catch(error => {
       logger.error(`Failed to send level up message in channel ${levelUpChannel.id}:`, error);
     });
   } catch (error) {

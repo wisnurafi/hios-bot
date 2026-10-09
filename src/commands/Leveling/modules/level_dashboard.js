@@ -17,7 +17,7 @@ import {
     EmbedBuilder,
 } from 'discord.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
-import { successEmbed } from '../../../utils/embeds.js';
+import { successEmbed, errorEmbed } from '../../../utils/embeds.js';
 import { logger } from '../../../utils/logger.js';
 import { TitanBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { getLevelingConfig, saveLevelingConfig } from '../../../services/leveling/leveling.js';
@@ -53,7 +53,7 @@ function buildDashboardEmbed(cfg, guild) {
             { name: 'Announcements', value: cfg.announceLevelUp !== false ? '**Enabled**' : '**Disabled**', inline: true },
             { name: 'XP per Message', value: `\`${xpMin} – ${xpMax}\``, inline: true },
             { name: 'XP Cooldown', value: `\`${cooldown}s\``, inline: true },
-            { name: '\u200B', value: '\u200B', inline: true },
+            { name: 'Embed Color', value: `\`${cfg.levelUpColor || '#FFC107'}\``, inline: true },
             { name: 'Level-up Message', value: msgPreview, inline: false },
             { name: 'Role Rewards', value: rewardsValue, inline: false },
             { name: 'Ignored Channels', value: ignoredChValue, inline: true },
@@ -78,6 +78,11 @@ function buildSelectMenu(guildId) {
                 .setDescription('Customise the message shown when a user levels up')
                 .setValue('message')
                 .setEmoji('💬'),
+            new StringSelectMenuOptionBuilder()
+                .setLabel('Set Level-up Embed Color')
+                .setDescription('Change the accent color strip of the level-up embed')
+                .setValue('embed_color')
+                .setEmoji('🎨'),
             new StringSelectMenuOptionBuilder()
                 .setLabel('Set XP Range')
                 .setDescription('Set the minimum and maximum XP rewarded per message')
@@ -175,6 +180,9 @@ export default {
                             break;
                         case 'message':
                             await handleMessage(selectInteraction, interaction, cfg, guildId, client);
+                            break;
+                        case 'embed_color':
+                            await handleEmbedColor(selectInteraction, interaction, cfg, guildId, client);
                             break;
                         case 'xp_range':
                             await handleXpRange(selectInteraction, interaction, cfg, guildId, client);
@@ -584,6 +592,67 @@ async function handleMessage(selectInteraction, rootInteraction, cfg, guildId, c
                 '✅ Message Updated',
                 `Level-up message saved.\n**Preview:** ${preview}`,
             ),
+        ],
+        flags: MessageFlags.Ephemeral,
+    });
+
+    await refreshDashboard(rootInteraction, cfg, guildId);
+}
+
+async function handleEmbedColor(selectInteraction, rootInteraction, cfg, guildId, client) {
+    const modal = new ModalBuilder()
+        .setCustomId('level_cfg_embed_color')
+        .setTitle('🎨 Level-up Embed Color')
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('color_input')
+                    .setLabel('Hex color (e.g. #FFC107)')
+                    .setStyle(TextInputStyle.Short)
+                    .setValue(cfg.levelUpColor || '#FFC107')
+                    .setMaxLength(7)
+                    .setMinLength(4)
+                    .setRequired(true)
+                    .setPlaceholder('#FFC107'),
+            ),
+        );
+
+    await selectInteraction.showModal(modal);
+
+    const submitted = await selectInteraction
+        .awaitModalSubmit({
+            filter: i =>
+                i.customId === 'level_cfg_embed_color' && i.user.id === selectInteraction.user.id,
+            time: 120_000,
+        })
+        .catch(() => null);
+
+    if (!submitted) return;
+
+    let newColor = submitted.fields.getTextInputValue('color_input').trim();
+    if (!newColor.startsWith('#')) {
+        newColor = `#${newColor}`;
+    }
+
+    if (!/^#[0-9A-Fa-f]{6}$/.test(newColor)) {
+        logger.warn(`Invalid level-up embed color "${newColor}" in guild ${guildId}`);
+        await submitted.reply({
+            embeds: [errorEmbed('❌ Invalid Color', 'Use a 6-digit hex color like `#FFC107`.')],
+            flags: MessageFlags.Ephemeral,
+        });
+        return;
+    }
+
+    cfg.levelUpColor = newColor.toUpperCase();
+    await saveLevelingConfig(client, guildId, cfg);
+
+    await submitted.reply({
+        embeds: [
+            new EmbedBuilder()
+                .setColor(cfg.levelUpColor)
+                .setTitle('✅ Embed Color Updated')
+                .setDescription(`Level-up embeds will now use the accent color \`${cfg.levelUpColor}\`.`)
+                .setThumbnail(selectInteraction.guild?.iconURL({ size: 128 }) ?? null),
         ],
         flags: MessageFlags.Ephemeral,
     });
