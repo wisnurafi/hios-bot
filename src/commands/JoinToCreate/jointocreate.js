@@ -287,7 +287,12 @@ async function handleConfigSubcommand(interaction, client) {
             .setLabel('🗑️ Remove Channel')
             .setStyle(ButtonStyle.Danger);
 
-        const row = new ActionRowBuilder().addComponents(nameButton, limitButton, bitrateButton, deleteButton);
+        const repanelButton = new ButtonBuilder()
+            .setCustomId(`jtc_config_repanel_${triggerChannel.id}`)
+            .setLabel('🔄 Resend Interface')
+            .setStyle(ButtonStyle.Secondary);
+
+        const row = new ActionRowBuilder().addComponents(nameButton, limitButton, bitrateButton, repanelButton, deleteButton);
 
         await InteractionHelper.safeEditReply(interaction, {
             embeds: [configEmbed],
@@ -330,6 +335,8 @@ async function handleConfigSubcommand(interaction, client) {
                     await handleBitrateModal(buttonInteraction, triggerChannel, currentConfig, client);
                 } else if (customId.includes('jtc_config_delete_')) {
                     await handleChannelDeletion(buttonInteraction, triggerChannel, currentConfig, client);
+                } else if (customId.includes('jtc_config_repanel_')) {
+                    await handleRepanel(buttonInteraction, client);
                 }
             } catch (error) {
                 const userMessage = error instanceof TitanBotError
@@ -594,6 +601,21 @@ async function handleBitrateModal(interaction, triggerChannel, currentConfig, cl
             ErrorTypes.UNKNOWN,
             'An error occurred while updating the bitrate.'
         );
+    }
+}
+
+async function handleRepanel(interaction, client) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => null);
+    try {
+        const panel = await ensureInterfacePanel(client, interaction.guild);
+        await interaction.editReply({
+            content: `✅ Interface panel ${panel.created ? 'created' : 'refreshed'} in ${panel.channel}.`,
+        }).catch(() => null);
+    } catch (error) {
+        logger.error(`Failed to resend TempVoice interface panel in guild ${interaction.guildId}:`, error.message);
+        await interaction.editReply({
+            content: '❌ Could not resend the interface panel. Check that the bot has Manage Channels and Manage Emojis permissions.',
+        }).catch(() => null);
     }
 }
 

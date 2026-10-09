@@ -32,6 +32,9 @@ import { sanitizeInput } from '../utils/validation.js';
 import { getColor } from '../config/bot.js';
 import { logger } from '../utils/logger.js';
 import { InteractionHelper } from '../utils/interactionHelper.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 
 export const INTERFACE_CHANNEL_NAME = 'interface';
 const WAITING_ROOM_NAME = 'Waiting Room';
@@ -50,38 +53,115 @@ const OWNER_OVERWRITES = {
 
 const PANEL_BUTTONS = [
     [
-        { id: 'name', label: 'NAME', emoji: '✏️', style: ButtonStyle.Primary },
-        { id: 'limit', label: 'LIMIT', emoji: '👥', style: ButtonStyle.Primary },
-        { id: 'privacy', label: 'PRIVACY', emoji: '🔒', style: ButtonStyle.Secondary },
-        { id: 'waitingroom', label: 'WAITING ROOM', emoji: '⏳', style: ButtonStyle.Secondary },
-        { id: 'chat', label: 'CHAT', emoji: '💬', style: ButtonStyle.Secondary },
+        { id: 'name', label: 'NAME', icon: 'name', emoji: '🏷️', style: ButtonStyle.Primary },
+        { id: 'limit', label: 'LIMIT', icon: 'limit', emoji: '🔢', style: ButtonStyle.Primary },
+        { id: 'privacy', label: 'PRIVACY', icon: 'privacy', emoji: '🔒', style: ButtonStyle.Secondary },
+        { id: 'waitingroom', label: 'WAITING ROOM', icon: 'waitingroom', emoji: '🚪', style: ButtonStyle.Secondary },
+        { id: 'chat', label: 'CHAT', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
     ],
     [
-        { id: 'trust', label: 'TRUST', emoji: '🤝', style: ButtonStyle.Success },
-        { id: 'untrust', label: 'UNTRUST', emoji: '🚫', style: ButtonStyle.Secondary },
-        { id: 'invite', label: 'INVITE', emoji: '📨', style: ButtonStyle.Primary },
-        { id: 'kick', label: 'KICK', emoji: '👢', style: ButtonStyle.Danger },
-        { id: 'region', label: 'REGION', emoji: '🌐', style: ButtonStyle.Secondary },
+        { id: 'trust', label: 'TRUST', icon: 'trust', emoji: '✅', style: ButtonStyle.Success },
+        { id: 'untrust', label: 'UNTRUST', icon: 'untrust', emoji: '❌', style: ButtonStyle.Secondary },
+        { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Primary },
+        { id: 'kick', label: 'KICK', icon: 'kick', emoji: '🦵', style: ButtonStyle.Danger },
+        { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
     ],
     [
-        { id: 'block', label: 'BLOCK', emoji: '⛔', style: ButtonStyle.Danger },
-        { id: 'unblock', label: 'UNBLOCK', emoji: '🔓', style: ButtonStyle.Secondary },
-        { id: 'claim', label: 'CLAIM', emoji: '👑', style: ButtonStyle.Primary },
-        { id: 'transfer', label: 'TRANSFER', emoji: '🔄', style: ButtonStyle.Primary },
-        { id: 'delete', label: 'DELETE', emoji: '🗑️', style: ButtonStyle.Danger },
+        { id: 'block', label: 'BLOCK', icon: 'block', emoji: '⛔', style: ButtonStyle.Danger },
+        { id: 'unblock', label: 'UNBLOCK', icon: 'unblock', emoji: '🔓', style: ButtonStyle.Secondary },
+        { id: 'claim', label: 'CLAIM', icon: 'claim', emoji: '👑', style: ButtonStyle.Primary },
+        { id: 'transfer', label: 'TRANSFER', icon: 'transfer', emoji: '🔄', style: ButtonStyle.Primary },
+        { id: 'delete', label: 'DELETE', icon: 'delete', emoji: '🗑️', style: ButtonStyle.Danger },
     ],
 ];
 
-export function buildInterfacePayload() {
+// Flat minimal white icons (Lucide, MIT) uploaded as custom guild emojis so
+// the panel buttons don't rely on Unicode emoji. Keys match PANEL_BUTTONS icons.
+const INTERFACE_EMOJI_DIR = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..',
+    '..',
+    'assets',
+    'interface-emojis'
+);
+const emojiNameFor = (key) => `hios_tv_${key}`;
+
+/**
+ * Ensure the 15 flat panel icons exist as custom emojis in this guild.
+ * Idempotent: reuses stored emojis that still exist, uploads only what's
+ * missing. Returns a map of icon key -> emoji mention string.
+ * Falls back to an empty map (caller uses Unicode emoji) when the bot
+ * lacks Manage Emojis permission or an upload fails.
+ */
+export async function ensureInterfaceEmojis(client, guild) {
+    const config = await getJoinToCreateConfig(client, guild.id);
+    const stored = (config.interfaceEmojis && typeof config.interfaceEmojis === 'object')
+        ? config.interfaceEmojis
+        : {};
+
+    const emojis = await guild.emojis.fetch().catch(() => guild.emojis.cache);
+    const resolved = {};
+    const missing = [];
+
+    for (const row of PANEL_BUTTONS) {
+        for (const b of row) {
+            const mention = stored[b.icon];
+            const id = typeof mention === 'string' ? (mention.match(/:(\d+)>$/) || [])[1] : null;
+            if (id && emojis.has(id)) {
+                resolved[b.icon] = mention;
+            } else {
+                missing.push(b.icon);
+            }
+        }
+    }
+
+    if (missing.length === 0) {
+        return resolved;
+    }
+
+    const me = guild.members.me;
+    if (!me?.permissions.has(PermissionFlagsBits.ManageEmojisAndStickers)) {
+        logger.warn(
+            `TempVoice: missing Manage Emojis permission in guild ${guild.id}, ` +
+            'panel will use Unicode emoji fallbacks'
+        );
+        return resolved;
+    }
+
+    const updated = { ...stored };
+    for (const key of missing) {
+        try {
+            const data = await readFile(path.join(INTERFACE_EMOJI_DIR, `${key}.png`));
+            const emoji = await guild.emojis.create({ attachment: data, name: emojiNameFor(key) });
+            const mention = `<:${emoji.name}:${emoji.id}>`;
+            updated[key] = mention;
+            resolved[key] = mention;
+            logger.info(`TempVoice: uploaded interface emoji ${mention} in guild ${guild.id}`);
+        } catch (error) {
+            logger.warn(`TempVoice: failed to upload interface emoji "${key}" in guild ${guild.id}: ${error.message}`);
+        }
+    }
+
+    await updateJoinToCreateConfig(client, guild.id, { interfaceEmojis: updated }).catch((error) => {
+        logger.warn(`TempVoice: failed to persist interface emojis in guild ${guild.id}: ${error.message}`);
+    });
+
+    return resolved;
+}
+
+export function buildInterfacePayload(interfaceEmojis = {}) {
+    const em = (b) => interfaceEmojis[b.icon] || b.emoji;
+    const legend = PANEL_BUTTONS.map((row) =>
+        row.map((b) => `${em(b)} ${b.label}`).join('　')
+    ).join('\n');
+
     const embed = new EmbedBuilder()
-        .setTitle('TempVoice Interface')
-        .setColor(getColor('error'))
+        .setTitle('🎙️ TempVoice Interface')
+        .setColor(getColor('info'))
         .setDescription(
             'This interface can be used to manage temporary voice channels.\n' +
             'More options are available with /voice commands.\n\n' +
-            '✏️ NAME　👥 LIMIT　🔒 PRIVACY　⏳ WAITING ROOM　💬 CHAT\n' +
-            '🤝 TRUST　🚫 UNTRUST　📨 INVITE　👢 KICK　🌐 REGION\n' +
-            '⛔ BLOCK　🔓 UNBLOCK　👑 CLAIM　🔄 TRANSFER　🗑️ DELETE\n\n' +
+            legend + '\n\n' +
             'Press the buttons below to use the interface'
         );
 
@@ -91,7 +171,7 @@ export function buildInterfacePayload() {
                 new ButtonBuilder()
                     .setCustomId(`tempvoice:${b.id}`)
                     .setLabel(b.label)
-                    .setEmoji(b.emoji)
+                    .setEmoji(em(b))
                     .setStyle(b.style)
             )
         )
@@ -224,8 +304,9 @@ async function swapOwnerOverwrites(channel, oldOwnerId, newOwnerId) {
  * reuses the stored channel/message when they still exist, otherwise recreates.
  */
 export async function ensureInterfacePanel(client, guild, categoryId = null) {
-    const payload = buildInterfacePayload();
     const config = await getJoinToCreateConfig(client, guild.id);
+    const interfaceEmojis = await ensureInterfaceEmojis(client, guild);
+    const payload = buildInterfacePayload(interfaceEmojis);
 
     if (config.interfaceChannelId) {
         const existing =
