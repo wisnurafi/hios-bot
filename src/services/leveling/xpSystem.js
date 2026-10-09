@@ -110,6 +110,22 @@ async function awardRoleReward(guild, member, roleId, level) {
   }
 }
 
+/**
+ * Send a sample level-up embed so admins can preview the announcement
+ * without waiting for a real level-up. Uses the caller's own member data
+ * (avatar, mention) with their current level -> level + 1.
+ */
+export const sendLevelUpPreview = wrapServiceBoundary(async function sendLevelUpPreview(client, guild, member) {
+  const config = await getLevelingConfig(client, guild.id);
+  const levelData = await getUserLevelData(client, guild.id, member.user.id);
+  const previewData = { ...levelData, level: levelData.level + 1 };
+  await sendLevelUpAnnouncement(guild, member, previewData, config, levelData.level);
+}, {
+  service: 'xpSystem',
+  operation: 'sendLevelUpPreview',
+  userMessage: 'Failed to send level-up preview.',
+});
+
 const DEFAULT_LEVELUP_COLOR = '#FFC107';
 
 /**

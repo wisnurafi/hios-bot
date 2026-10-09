@@ -21,6 +21,7 @@ import { successEmbed, errorEmbed } from '../../../utils/embeds.js';
 import { logger } from '../../../utils/logger.js';
 import { TitanBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { getLevelingConfig, saveLevelingConfig } from '../../../services/leveling/leveling.js';
+import { sendLevelUpPreview } from '../../../services/leveling/xpSystem.js';
 import { botHasPermission } from '../../../utils/permissionGuard.js';
 import { startDashboardSession } from '../../../utils/dashboardSession.js';
 
@@ -132,6 +133,12 @@ function buildButtonRow(cfg, guildId, disabled = false) {
             .setStyle(systemOn ? ButtonStyle.Success : ButtonStyle.Danger)
             .setEmoji('⚡')
             .setDisabled(disabled),
+        new ButtonBuilder()
+            .setCustomId(`level_cfg_test_announce_${guildId}`)
+            .setLabel('Test Announcement')
+            .setStyle(ButtonStyle.Secondary)
+            .setEmoji('🧪')
+            .setDisabled(disabled),
     );
 }
 
@@ -171,7 +178,8 @@ export default {
                 selectMenuId: `level_cfg_${guildId}`,
                 buttonMatcher: (customId) =>
                     customId === `level_cfg_toggle_announce_${guildId}` ||
-                    customId === `level_cfg_toggle_system_${guildId}`,
+                    customId === `level_cfg_toggle_system_${guildId}` ||
+                    customId === `level_cfg_test_announce_${guildId}`,
                 onSelect: async (selectInteraction) => {
                     const selectedOption = selectInteraction.values[0];
                     switch (selectedOption) {
@@ -206,6 +214,35 @@ export default {
                 },
                 onButton: async (btnInteraction) => {
                     await btnInteraction.deferUpdate().catch(() => null);
+                    const isTest = btnInteraction.customId === `level_cfg_test_announce_${guildId}`;
+
+                    if (isTest) {
+                        try {
+                            await sendLevelUpPreview(client, btnInteraction.guild, btnInteraction.member);
+                            await btnInteraction.followUp({
+                                embeds: [
+                                    successEmbed(
+                                        '✅ Test Sent',
+                                        'Sample level-up embed sent to the announcement channel.',
+                                    ),
+                                ],
+                                flags: MessageFlags.Ephemeral,
+                            });
+                        } catch (previewError) {
+                            logger.error('Level-up preview failed:', previewError.message);
+                            await btnInteraction.followUp({
+                                embeds: [
+                                    errorEmbed(
+                                        '❌ Test Failed',
+                                        'Could not send the preview. Check the level-up channel and bot permissions.',
+                                    ),
+                                ],
+                                flags: MessageFlags.Ephemeral,
+                            });
+                        }
+                        return;
+                    }
+
                     const isAnnounce = btnInteraction.customId === `level_cfg_toggle_announce_${guildId}`;
 
                     if (isAnnounce) {
