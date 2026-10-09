@@ -23,7 +23,10 @@ const MAX_TRACKED_COOLDOWNS = 10000;
 export default {
     name: 'voiceStateUpdate',
     async execute(oldState, newState, client) {
-        if (newState.member.user.bot) return;
+        // Bots never create temp channels, but their leave/move events must
+        // still be processed: otherwise a channel whose last member is a bot
+        // (e.g. a music bot) is never cleaned up.
+        const memberIsBot = newState.member.user.bot;
 
         const guildId = newState.guild.id;
         const userId = newState.member.id;
@@ -40,14 +43,14 @@ export default {
             // TempVoice waiting room: bounce untrusted joiners into the waiting
             // room channel. When a redirect happens, skip the rest of this event
             // (the follow-up move event is handled normally).
-            if (newState.channel) {
+            if (!memberIsBot && newState.channel) {
                 const redirected = await enforceWaitingRoom(client, oldState, newState, config);
                 if (redirected) {
                     return;
                 }
             }
 
-            if (!oldState.channel && newState.channel) {
+            if (!memberIsBot && !oldState.channel && newState.channel) {
                 await handleVoiceJoin(client, newState, config);
             }
 
@@ -119,31 +122,24 @@ if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
 
             if (channel.members.size === 0) {
                 await deleteTemporaryChannel(client, channel, state.guild.id);
-            } else if (tempChannelInfo.ownerId === member.id) {
-                const nextMember = channel.members.first();
-                if (nextMember) {
-                    await transferChannelOwnership(client, channel, state.guild.id, nextMember.id);
-                }
             }
+            // No auto-transfer: when the owner leaves, the room keeps the
+            // creator's name until it's empty. Anyone still inside can take
+            // over with the CLAIM button in the interface panel.
         }
 
         async function handleVoiceMove(client, oldState, newState, config) {
             if (oldState.channel) {
                 const tempChannelInfo = await getTemporaryChannelInfo(client, oldState.guild.id, oldState.channel.id);
                 
-                if (tempChannelInfo) {
-                    if (oldState.channel.members.size === 0) {
-                        await deleteTemporaryChannel(client, oldState.channel, oldState.guild.id);
-                    } else if (tempChannelInfo.ownerId === oldState.member.id) {
-                        const nextMember = oldState.channel.members.first();
-                        if (nextMember) {
-                            await transferChannelOwnership(client, oldState.channel, oldState.guild.id, nextMember.id);
-                        }
-                    }
+                if (tempChannelInfo && oldState.channel.members.size === 0) {
+                    await deleteTemporaryChannel(client, oldState.channel, oldState.guild.id);
                 }
+                // No auto-transfer on move either (see handleVoiceLeave).
             }
 
-            if (config.triggerChannels.includes(newState.channel.id) && 
+            if (!memberIsBot &&
+                config.triggerChannels.includes(newState.channel.id) &&
                 !config.triggerChannels.includes(oldState.channel?.id)) {
                 await handleVoiceJoin(client, newState, config);
             }
@@ -185,10 +181,9 @@ if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
 
                 let finalName;
 
-                if (
-                    nameTemplate.includes('{username}') ||
-                    nameTemplate.includes('{displayName}')
-                ) {
+                // Accept both snake_case and camelCase placeholders
+                // ({display_name} and {displayName}, etc.).
+                if (/\{(username|displayName|display_name|userTag|user_tag|guildName|guild_name|channelName|channel_name)\}/.test(nameTemplate)) {
                     finalName = formatChannelName(nameTemplate, {
                         username: member.user.username,
                         userTag: member.user.tag,
@@ -295,40 +290,8 @@ userLimit: userLimit === 0 ? undefined : userLimit,
             }
         }
 
-        async function transferChannelOwnership(client, channel, guildId, newOwnerId) {
-            try {
-                const config = await getJoinToCreateConfig(client, guildId);
-                const tempChannelInfo = config.temporaryChannels[channel.id];
-                
-                if (!tempChannelInfo) return;
 
-                config.temporaryChannels[channel.id].ownerId = newOwnerId;
-                await client.db.set(`guild:${guildId}:jointocreate`, config);
-
-                const newOwner = await channel.guild.members.fetch(newOwnerId);
-                if (newOwner) {
-                    const channelOptions = config.channelOptions?.[tempChannelInfo.triggerChannelId] || {};
-                    const nameTemplate = channelOptions.nameTemplate || config.channelNameTemplate;
-                    
-                    const newChannelName = sanitizeVoiceChannelName(formatChannelName(nameTemplate, {
-                        username: newOwner.user.username,
-                        userTag: newOwner.user.tag,
-                        displayName: newOwner.displayName,
-                        guildName: channel.guild.name,
-                        channelName: channel.guild.channels.cache.get(tempChannelInfo.triggerChannelId)?.name || 'Voice Channel'
-                    }));
-
-                    await channel.setName(newChannelName);
-                }
-
-                logger.info(`Transferred ownership of temporary channel ${channel.id} to user ${newOwnerId}`);
-
-            } catch (error) {
-                logger.error(`Failed to transfer ownership of channel ${channel.id}:`, error);
-            }
-        }
-
-        if (client.config?.features?.music) {
+        if (!memberIsBot && client.config?.features?.music) {
             handleMusicVoiceState(client, oldState, newState).catch((error) => {
                 logger.error('Music voice state handler error:', error);
             });

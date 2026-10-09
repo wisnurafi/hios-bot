@@ -1207,16 +1207,22 @@ export function formatChannelName(template, variables) {
     const replacements = {
         '{username}': variables.username || 'User',
         '{user_tag}': variables.userTag || 'User#0000',
+        '{userTag}': variables.userTag || 'User#0000',
         '{display_name}': variables.displayName || 'User',
+        '{displayName}': variables.displayName || 'User',
         '{guild_name}': variables.guildName || 'Server',
-        '{channel_name}': variables.channelName || 'Voice Channel'
+        '{guildName}': variables.guildName || 'Server',
+        '{channel_name}': variables.channelName || 'Voice Channel',
+        '{channelName}': variables.channelName || 'Voice Channel'
     };
     
     for (const [placeholder, value] of Object.entries(replacements)) {
         formatted = formatted.replace(new RegExp(placeholder.replace(/[{}]/g, '\\$&'), 'g'), value);
     }
     
-    formatted = formatted.replace(/[^\w\s-]/g, '').trim();
+    // Keep apostrophes so the default "{username}'s Room" template survives;
+    // @, #, etc. are still stripped to avoid mention/channel-link abuse.
+    formatted = formatted.replace(/[^\w\s\-']/g, '').trim();
 formatted = formatted.substring(0, 100);
     
     return formatted || 'Voice Channel';
