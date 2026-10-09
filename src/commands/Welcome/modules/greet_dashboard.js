@@ -23,6 +23,7 @@ import { logger } from '../../../utils/logger.js';
 import { TitanBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { getWelcomeConfig, saveWelcomeConfig } from '../../../utils/database.js';
 import { botHasPermission } from '../../../utils/permissionGuard.js';
+import { getDefaultGettingStartedMessage } from '../../../utils/welcome.js';
 
 async function deferComponent(interaction) {
     if (interaction.deferred || interaction.replied) {
@@ -55,8 +56,10 @@ function buildDashboardEmbed(cfg, guild) {
 
     const rawWelcome = cfg.welcomeMessage || 'Welcome {user} to {server}!';
     const rawGoodbye = cfg.leaveMessage || '{user.tag} has left the server.';
+    const rawGettingStarted = cfg.welcomeGettingStarted || getDefaultGettingStartedMessage();
     const welcomePreview = `\`${rawWelcome.length > 55 ? rawWelcome.substring(0, 55) + '…' : rawWelcome}\``;
     const goodbyePreview = `\`${rawGoodbye.length > 55 ? rawGoodbye.substring(0, 55) + '…' : rawGoodbye}\``;
+    const gettingStartedPreview = `\`${rawGettingStarted.length > 55 ? rawGettingStarted.substring(0, 55) + '…' : rawGettingStarted}\``;
 
     return new EmbedBuilder()
         .setTitle('👋 Greet System Dashboard')
@@ -72,6 +75,9 @@ function buildDashboardEmbed(cfg, guild) {
             { name: 'Goodbye Status', value: cfg.goodbyeEnabled ? 'Enabled' : 'Disabled', inline: true },
             { name: 'Goodbye Ping', value: cfg.goodbyePing ? 'On' : 'Off', inline: true },
             { name: 'Welcome Message', value: welcomePreview, inline: false },
+            { name: 'Getting Started', value: gettingStartedPreview, inline: false },
+            { name: 'Rules Channel', value: cfg.welcomeRulesChannelId ? `<#${cfg.welcomeRulesChannelId}>` : '`Not set`', inline: true },
+            { name: 'Verify Channel', value: cfg.welcomeVerifyChannelId ? `<#${cfg.welcomeVerifyChannelId}>` : '`Not set`', inline: true },
             { name: 'Goodbye Message', value: goodbyePreview, inline: false },
         )
         .setFooter({ text: 'Dashboard closes after 10 minutes of inactivity' })
@@ -98,6 +104,21 @@ function buildSelectMenu(guildId) {
                 .setDescription('Set the image for welcome messages')
                 .setValue('welcome_image')
                 .setEmoji('🖼️'),
+            new StringSelectMenuOptionBuilder()
+                .setLabel('Getting Started Text')
+                .setDescription('Edit the getting-started section of the welcome card')
+                .setValue('welcome_gettingstarted')
+                .setEmoji('📋'),
+            new StringSelectMenuOptionBuilder()
+                .setLabel('Rules Channel')
+                .setDescription('Channel mentioned as rules in the welcome card')
+                .setValue('welcome_rules_channel')
+                .setEmoji('📏'),
+            new StringSelectMenuOptionBuilder()
+                .setLabel('Verify Channel')
+                .setDescription('Channel mentioned for verification in the welcome card')
+                .setValue('welcome_verify_channel')
+                .setEmoji('🔒'),
             new StringSelectMenuOptionBuilder()
                 .setLabel('Goodbye Channel')
                 .setDescription('Set the channel where goodbye messages are sent')
@@ -218,6 +239,23 @@ export default {
                             break;
                         case 'welcome_image':
                             await handleWelcomeImage(selectInteraction, interaction, cfg, guildId, client);
+                            break;
+                        case 'welcome_gettingstarted':
+                            await handleGettingStartedText(selectInteraction, interaction, cfg, guildId, client);
+                            break;
+                        case 'welcome_rules_channel':
+                            await handleMentionChannel(selectInteraction, interaction, cfg, guildId, client, {
+                                key: 'welcomeRulesChannelId',
+                                title: '📏 Rules Channel',
+                                description: 'This channel will be mentioned as {rules} in the getting-started section.',
+                            });
+                            break;
+                        case 'welcome_verify_channel':
+                            await handleMentionChannel(selectInteraction, interaction, cfg, guildId, client, {
+                                key: 'welcomeVerifyChannelId',
+                                title: '🔒 Verify Channel',
+                                description: 'This channel will be mentioned as {verify} in the getting-started section.',
+                            });
                             break;
                         case 'goodbye_channel':
                             await handleGoodbyeChannel(selectInteraction, interaction, cfg, guildId, client);
@@ -768,4 +806,105 @@ async function handleGoodbyePing(selectInteraction, rootInteraction, cfg, guildI
     });
 
     await refreshDashboard(rootInteraction, cfg, guildId);
+}
+async function handleGettingStartedText(selectInteraction, rootInteraction, cfg, guildId, client) {
+    const modal = new ModalBuilder()
+        .setCustomId('greet_cfg_gettingstarted')
+        .setTitle('Edit Getting Started Text')
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId('message_input')
+                    .setLabel('Text (variables: {user}, {server}, {rules}, {verify})')
+                    .setStyle(TextInputStyle.Paragraph)
+                    .setValue(cfg.welcomeGettingStarted || getDefaultGettingStartedMessage())
+                    .setMaxLength(1500)
+                    .setMinLength(1)
+                    .setRequired(true),
+            ),
+        );
+
+    try {
+        await selectInteraction.showModal(modal);
+    } catch {
+        return;
+    }
+
+    const submitted = await selectInteraction
+        .awaitModalSubmit({
+            filter: i =>
+                i.customId === 'greet_cfg_gettingstarted' && i.user.id === selectInteraction.user.id,
+            time: 120_000,
+        })
+        .catch(() => null);
+
+    if (!submitted) return;
+
+    cfg.welcomeGettingStarted = submitted.fields.getTextInputValue('message_input').trim();
+    await saveWelcomeConfig(client, guildId, cfg);
+
+    await submitted.reply({
+        embeds: [successEmbed('Getting Started Updated', 'The getting-started section has been saved.')],
+        flags: MessageFlags.Ephemeral,
+    });
+
+    await refreshDashboard(rootInteraction, cfg, guildId);
+}
+
+async function handleMentionChannel(selectInteraction, rootInteraction, cfg, guildId, client, { key, title, description }) {
+    if (!await deferComponent(selectInteraction)) {
+        return;
+    }
+
+    const customId = `greet_cfg_mention_${key}`;
+    const channelSelect = new ChannelSelectMenuBuilder()
+        .setCustomId(customId)
+        .setPlaceholder('Select a text channel...')
+        .addChannelTypes(ChannelType.GuildText)
+        .setMaxValues(1);
+
+    await sendEphemeralFollowUp(selectInteraction, {
+        embeds: [
+            new EmbedBuilder()
+                .setTitle(title)
+                .setDescription(
+                    `**Current:** ${cfg[key] ?`<#${cfg[key]}>`: '`Not set`'}\n\n${description}`,
+                )
+                .setColor(getColor('info')),
+        ],
+        components: [new ActionRowBuilder().addComponents(channelSelect)],
+    });
+
+    const chanCollector = rootInteraction.channel.createMessageComponentCollector({
+        componentType: ComponentType.ChannelSelect,
+        filter: i =>
+            i.user.id === selectInteraction.user.id && i.customId === customId,
+        time: 60_000,
+        max: 1,
+    });
+
+    chanCollector.on('collect', async chanInteraction => {
+        if (!await deferComponent(chanInteraction)) {
+            return;
+        }
+        const channel = chanInteraction.channels.first();
+
+        cfg[key] = channel.id;
+        await saveWelcomeConfig(client, guildId, cfg);
+
+        await sendEphemeralFollowUp(chanInteraction, {
+            embeds: [successEmbed('Channel Updated', `${title} is now ${channel}.`)],
+        });
+
+        await refreshDashboard(rootInteraction, cfg, guildId);
+    });
+
+    chanCollector.on('end', (collected, reason) => {
+        if (reason === 'time' && collected.size === 0) {
+            replyUserError(selectInteraction, {
+                type: ErrorTypes.RATE_LIMIT,
+                message: 'No channel was selected. The setting was not changed.',
+            }).catch(() => {});
+        }
+    });
 }

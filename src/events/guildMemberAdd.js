@@ -1,12 +1,22 @@
 import { Events, EmbedBuilder, PermissionFlagsBits } from 'discord.js';
-import { getColor, botConfig } from '../config/bot.js';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { existsSync } from 'fs';
+import { botConfig } from '../config/bot.js';
 import { getGuildConfig } from '../services/config/guildConfig.js';
 import { getWelcomeConfig } from '../utils/database.js';
-import { formatWelcomeMessage } from '../utils/welcome.js';
+import { formatWelcomeMessage, getDefaultGettingStartedMessage } from '../utils/welcome.js';
 import { logEvent, EVENT_TYPES } from '../services/loggingService.js';
 import { getServerCounters, updateCounter } from '../services/serverstatsService.js';
 import { setBirthday as dbSetBirthday } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+// Bundled fallback banner (assets/welcome-banner.png). An admin-configured
+// welcomeImage URL always takes priority over this file.
+const WELCOME_BANNER_PATH = join(__dirname, '..', '..', 'assets', 'welcome-banner.png');
+const WELCOME_BANNER_NAME = 'welcome-banner.png';
 
 export default {
   name: Events.GuildMemberAdd,
@@ -37,14 +47,6 @@ export default {
 
                 const messageContent = welcomeConfig.welcomePing ? user.toString() : null;
 
-                const embedTitle = formatWelcomeMessage(
-                    welcomeConfig.welcomeEmbed?.title || '🎉 Welcome!',
-                    formatData
-                );
-                const embedFooter = welcomeConfig.welcomeEmbed?.footer
-                    ? formatWelcomeMessage(welcomeConfig.welcomeEmbed.footer, formatData)
-                    : `Welcome to ${guild.name}!`;
-
                 const canEmbed = permissions.has(PermissionFlagsBits.EmbedLinks);
 
                 if (!canEmbed) {
@@ -52,27 +54,48 @@ export default {
                         content: messageContent || welcomeMessage
                     });
                 } else {
-                    const embed = new EmbedBuilder()
-                        .setColor(welcomeConfig.welcomeEmbed?.color || getColor('success'))
-                        .setTitle(embedTitle)
-                        .setDescription(welcomeMessage)
-                        .setThumbnail(user.displayAvatarURL())
-                        .addFields(
-                            { name: 'User', value: `${user.tag} (${user.id})`, inline: true },
-                            { name: 'Member Count', value: guild.memberCount.toString(), inline: true }
-                        )
-                        .setTimestamp()
-                        .setFooter({ text: embedFooter });
-                    
-                    if (welcomeConfig.welcomeImage) {
-                        embed.setImage(welcomeConfig.welcomeImage);
-                    } else if (welcomeConfig.welcomeEmbed?.image?.url) {
-                        embed.setImage(welcomeConfig.welcomeEmbed.image.url);
+                    // Banner-style layout (reference: multi-embed welcome card):
+                    //   1. banner image embed
+                    //   2. "👋 Welcome" embed with the new member's avatar
+                    //   3. "✅ Getting Started" embed with the server icon
+                    const embeds = [];
+                    const files = [];
+
+                    const bannerUrl = welcomeConfig.welcomeImage || welcomeConfig.welcomeEmbed?.image?.url || null;
+                    if (bannerUrl) {
+                        embeds.push(new EmbedBuilder().setImage(bannerUrl));
+                    } else if (existsSync(WELCOME_BANNER_PATH)) {
+                        files.push({ attachment: WELCOME_BANNER_PATH, name: WELCOME_BANNER_NAME });
+                        embeds.push(new EmbedBuilder().setImage(`attachment://${WELCOME_BANNER_NAME}`));
                     }
-                    
-                    await channel.send({ 
+
+                    embeds.push(
+                        new EmbedBuilder()
+                            .setTitle('👋 Welcome')
+                            .setDescription(welcomeMessage)
+                            .setThumbnail(user.displayAvatarURL())
+                    );
+
+                    const gettingStartedTemplate = welcomeConfig.welcomeGettingStarted || getDefaultGettingStartedMessage();
+                    const gettingStartedResolved = gettingStartedTemplate
+                        .split('{rules}').join(welcomeConfig.welcomeRulesChannelId ? `<#${welcomeConfig.welcomeRulesChannelId}>` : 'the rules channel')
+                        .split('{verify}').join(welcomeConfig.welcomeVerifyChannelId ? `<#${welcomeConfig.welcomeVerifyChannelId}>` : 'the verification channel');
+                    const gettingStartedText = formatWelcomeMessage(
+                        `✅ **Getting Started**\n${gettingStartedResolved}\n\nThank you for joining and have a great time in **${guild.name}**!`,
+                        formatData
+                    );
+
+                    const gettingStartedEmbed = new EmbedBuilder().setDescription(gettingStartedText);
+                    const guildIcon = guild.iconURL();
+                    if (guildIcon) {
+                        gettingStartedEmbed.setThumbnail(guildIcon);
+                    }
+                    embeds.push(gettingStartedEmbed);
+
+                    await channel.send({
                         content: messageContent,
-                        embeds: [embed] 
+                        embeds,
+                        files
                     });
                 }
             }

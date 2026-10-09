@@ -4,7 +4,8 @@ import { logger } from './logger.js';
 
 const DEFAULT_TEMPLATES = {
     welcome: 'Welcome {user} to {server}!',
-    goodbye: '{user.tag} has left the server.'
+    goodbye: '{user.tag} has left the server.',
+    gettingStarted: 'Before chatting, please make sure to read {rules} and verify your account in {verify} to keep the community safe and enjoyable for everyone.'
 };
 
 function replaceAll(message, token, value) {
@@ -70,4 +71,8 @@ export function getDefaultWelcomeMessage() {
 
 export function getDefaultGoodbyeMessage() {
     return DEFAULT_TEMPLATES.goodbye;
+}
+
+export function getDefaultGettingStartedMessage() {
+    return DEFAULT_TEMPLATES.gettingStarted;
 }
