@@ -9,6 +9,7 @@
 
 import {
     ActionRowBuilder,
+    AttachmentBuilder,
     ButtonBuilder,
     ButtonStyle,
     ChannelType,
@@ -29,7 +30,6 @@ import {
     formatChannelName,
 } from '../utils/database.js';
 import { sanitizeInput } from '../utils/validation.js';
-import { getColor } from '../config/bot.js';
 import { logger } from '../utils/logger.js';
 import { InteractionHelper } from '../utils/interactionHelper.js';
 import path from 'node:path';
@@ -151,33 +151,35 @@ export async function ensureInterfaceEmojis(client, guild) {
 
 export function buildInterfacePayload(interfaceEmojis = {}) {
     const em = (b) => interfaceEmojis[b.icon] || b.emoji;
-    const legend = PANEL_BUTTONS.map((row) =>
-        row.map((b) => `${em(b)} ${b.label}`).join('　')
-    ).join('\n');
 
     const embed = new EmbedBuilder()
-        .setTitle('🎙️ TempVoice Interface')
-        .setColor(getColor('info'))
+        .setTitle('TempVoice Interface')
+        .setColor('#1744E6')
         .setDescription(
-            'This interface can be used to manage temporary voice channels.\n' +
-            'More options are available with /voice commands.\n\n' +
-            legend + '\n\n' +
-            'Press the buttons below to use the interface'
-        );
+            'This **interface** can be used to manage temporary voice channels.\n' +
+            'More options are available with /voice commands.'
+        )
+        .setImage('attachment://interface-legend.png');
 
+    // Icon-only buttons (like the original TempVoice): the legend image
+    // above explains what each icon does.
     const rows = PANEL_BUTTONS.map((row) =>
         new ActionRowBuilder().addComponents(
             row.map((b) =>
                 new ButtonBuilder()
                     .setCustomId(`tempvoice:${b.id}`)
-                    .setLabel(b.label)
                     .setEmoji(em(b))
                     .setStyle(b.style)
             )
         )
     );
 
-    return { embeds: [embed], components: rows };
+    const legend = new AttachmentBuilder(
+        path.join(INTERFACE_EMOJI_DIR, '..', 'interface-legend.png'),
+        { name: 'interface-legend.png' }
+    );
+
+    return { embeds: [embed], components: rows, files: [legend] };
 }
 
 // ---------------------------------------------------------------------------
