@@ -815,7 +815,7 @@ async function handleGettingStartedText(selectInteraction, rootInteraction, cfg,
             new ActionRowBuilder().addComponents(
                 new TextInputBuilder()
                     .setCustomId('message_input')
-                    .setLabel('Text (variables: {user}, {server}, {rules}, {verify})')
+                    .setLabel('Text (vars: {user}, {rules}, {verify})')
                     .setStyle(TextInputStyle.Paragraph)
                     .setValue(cfg.welcomeGettingStarted || getDefaultGettingStartedMessage())
                     .setMaxLength(1500)
