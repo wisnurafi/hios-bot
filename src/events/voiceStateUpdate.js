@@ -225,13 +225,19 @@ userLimit: userLimit === 0 ? undefined : userLimit,
                     ]
                 });
 
-                await registerTemporaryChannel(client, guild.id, tempChannel.id, member.id, triggerChannel.id);
-
-                if (member.voice?.channel?.id === triggerChannel.id) {
-                    await member.voice.setChannel(tempChannel);
-                } else {
-                    logger.debug(`Skipped moving ${member.id} to temporary channel ${tempChannel.id} because voice state changed`);
-                }
+                // Register the temp channel and move the member in parallel: the
+                // voice move doesn't depend on the DB write, so don't make
+                // the user wait for it. Errors still propagate to the catch
+                // below, preserving existing failure handling.
+                const registration = registerTemporaryChannel(client, guild.id, tempChannel.id, member.id, triggerChannel.id);
+                const move = (async () => {
+                    if (member.voice?.channel?.id === triggerChannel.id) {
+                        await member.voice.setChannel(tempChannel);
+                    } else {
+                        logger.debug(`Skipped moving ${member.id} to temporary channel ${tempChannel.id} because voice state changed`);
+                    }
+                })();
+                await Promise.all([registration, move]);
 
                 logger.info(`Created temporary voice channel ${tempChannel.name} (${tempChannel.id}) for user ${member.user.tag} in guild ${guild.name} with user limit ${userLimit}`);
 
