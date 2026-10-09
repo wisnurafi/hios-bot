@@ -14,6 +14,7 @@ import {
     getConfiguration
 } from '../../services/joinToCreateService.js';
 import { ensureInterfacePanel } from '../../services/tempvoiceInterface.js';
+import { updateJoinToCreateConfig } from '../../utils/database.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -609,8 +610,13 @@ async function handleChannelDeletion(interaction, triggerChannel, currentConfig,
                 .setStyle(ButtonStyle.Secondary)
         );
 
+        const hasInterfacePanel = Boolean(currentConfig.interfaceChannelId);
+        const confirmDescription = `Are you sure you want to remove **${triggerChannel.name}** from the Join to Create system?` +
+            (hasInterfacePanel ? `\n\nThis will also delete the TempVoice \`#interface\` control panel channel.` : '') +
+            `\n\nThis action cannot be undone.`;
+
         await InteractionHelper.safeReply(interaction, {
-            embeds: [warningEmbed('Confirm Deletion', `Are you sure you want to remove **${triggerChannel.name}** from the Join to Create system?\n\nThis action cannot be undone.`)],
+            embeds: [warningEmbed('Confirm Deletion', confirmDescription)],
             components: [confirmRow],
             flags: MessageFlags.Ephemeral
         });
@@ -637,8 +643,29 @@ async function handleChannelDeletion(interaction, triggerChannel, currentConfig,
                 }
 
                 if (buttonInteraction.customId === `jtc_delete_confirm_${triggerChannel.id}`) {
-                    
+
                     await removeTriggerChannel(client, interaction.guild.id, triggerChannel.id);
+
+                    // Option A: the TempVoice #interface panel is useless without the
+                    // Join to Create system, so remove it as well (tracked by channel ID).
+                    let interfaceRemoved = false;
+                    const interfaceChannelId = currentConfig.interfaceChannelId;
+                    if (interfaceChannelId) {
+                        try {
+                            const interfaceChannel = buttonInteraction.guild.channels.cache.get(interfaceChannelId)
+                                ?? await buttonInteraction.guild.channels.fetch(interfaceChannelId).catch(() => null);
+                            if (interfaceChannel) {
+                                await interfaceChannel.delete('Join to Create system removed by administrator');
+                                interfaceRemoved = true;
+                            }
+                        } catch (interfaceError) {
+                            logger.warn(`Could not delete TempVoice interface channel ${interfaceChannelId}: ${interfaceError.message}`);
+                        }
+                        await updateJoinToCreateConfig(client, interaction.guild.id, {
+                            interfaceChannelId: null,
+                            interfaceMessageId: null
+                        });
+                    }
 
                     await logConfigurationChange(client, interaction.guild.id, interaction.user.id, 'Removed Join to Create trigger', {
                         channelId: triggerChannel.id,
@@ -651,11 +678,11 @@ async function handleChannelDeletion(interaction, triggerChannel, currentConfig,
                         }
                     } catch (deleteError) {
                         logger.warn(`Could not delete channel ${triggerChannel.id}: ${deleteError.message}`);
-                        
+
                     }
 
                     await buttonInteraction.update({
-                        embeds: [successEmbed('Removed', `**${triggerChannel.name}** has been removed from the Join to Create system.`)],
+                        embeds: [successEmbed('Removed', `**${triggerChannel.name}** has been removed from the Join to Create system.` + (interfaceRemoved ? ' The TempVoice `#interface` panel channel was also deleted.' : ''))],
                         components: []
                     });
 
