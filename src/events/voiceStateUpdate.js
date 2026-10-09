@@ -151,6 +151,7 @@ if (now - lastCreation < VOICE_CREATE_COOLDOWN_MS) {
 
         async function createTemporaryChannel(client, state, config) {
             const { channel: triggerChannel, member, guild } = state;
+            const tStart = Date.now();
 
             try {
                 const me = guild.members.me;
@@ -229,15 +230,29 @@ userLimit: userLimit === 0 ? undefined : userLimit,
                 // voice move doesn't depend on the DB write, so don't make
                 // the user wait for it. Errors still propagate to the catch
                 // below, preserving existing failure handling.
-                const registration = registerTemporaryChannel(client, guild.id, tempChannel.id, member.id, triggerChannel.id);
+                const tCreated = Date.now();
+                let dbMs = -1;
+                let moveMs = -1;
+                const registration = (async () => {
+                    const s = Date.now();
+                    await registerTemporaryChannel(client, guild.id, tempChannel.id, member.id, triggerChannel.id);
+                    dbMs = Date.now() - s;
+                })();
                 const move = (async () => {
-                    if (member.voice?.channel?.id === triggerChannel.id) {
-                        await member.voice.setChannel(tempChannel);
-                    } else {
-                        logger.debug(`Skipped moving ${member.id} to temporary channel ${tempChannel.id} because voice state changed`);
+                    const s = Date.now();
+                    try {
+                        if (member.voice?.channel?.id === triggerChannel.id) {
+                            await member.voice.setChannel(tempChannel);
+                        } else {
+                            logger.debug(`Skipped moving ${member.id} to temporary channel ${tempChannel.id} because voice state changed`);
+                        }
+                    } finally {
+                        moveMs = Date.now() - s;
                     }
                 })();
                 await Promise.all([registration, move]);
+
+                logger.info(`[jtc] temp channel flow for ${member.user.tag}: create=${tCreated - tStart}ms db=${dbMs}ms move=${moveMs}ms total=${Date.now() - tStart}ms`);
 
                 logger.info(`Created temporary voice channel ${tempChannel.name} (${tempChannel.id}) for user ${member.user.tag} in guild ${guild.name} with user limit ${userLimit}`);
 
