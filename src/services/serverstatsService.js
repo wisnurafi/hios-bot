@@ -194,25 +194,19 @@ export async function updateCounter(client, guild, counter) {
     const currentName = channel.name;
     const defaultTemplate = botConfig.counters?.defaults?.channelName || '{name}-{count}';
 
-    // A previously adopted custom template always wins.
-    let nameTemplate = counter.nameTemplate || null;
+    // Derive the naming style fresh from the channel's current name on every
+    // update: the admin's text is kept exactly as-is and only the number is
+    // swapped. A manual restyle is therefore never reverted, and a normal
+    // count change is never mistaken for a restyle.
+    // (The previous "adopt once and cache" approach compared the current name
+    // against a freshly rendered default name, so it adopted the pre-restyle
+    // style on the first update and then ignored manual renames forever.)
+    const numberInfo = extractLastNumber(currentName);
+    const nameTemplate = numberInfo
+        ? deriveNameTemplate(currentName, numberInfo)
+        : defaultTemplate;
 
-    // No custom template yet: did the admin restyle the channel name manually?
-    // If the name still carries a number, adopt their style (only the number
-    // changes on updates) instead of reverting to the default template.
-    if (!nameTemplate) {
-        const defaultName = renderCounterName(defaultTemplate, type, count);
-        if (currentName !== defaultName) {
-            const numberInfo = extractLastNumber(currentName);
-            if (numberInfo) {
-                nameTemplate = deriveNameTemplate(currentName, numberInfo);
-                await updateCounterNameTemplate(client, guild.id, counter.id, nameTemplate);
-                logger.info(`ServerStats: adopted custom name template "${nameTemplate}" for counter ${counter.id} in guild ${guild.id}`);
-            }
-        }
-    }
-
-    const newName = renderCounterName(nameTemplate || defaultTemplate, type, count);
+    const newName = renderCounterName(nameTemplate, type, count);
     if (process.env.NODE_ENV !== 'production') {
       logger.debug(`Current name: "${currentName}", new name would be: "${newName}"`);
     }
@@ -317,26 +311,6 @@ export async function saveServerCounters(client, guildId, counters) {
     return true;
   } catch (error) {
     logger.error("Error saving server counters:", error);
-    return false;
-  }
-}
-/**
- * Persists a custom name template for a counter (adopted from a manual
- * channel rename — see updateCounter). The template must contain {count}.
- */
-export async function updateCounterNameTemplate(client, guildId, counterId, nameTemplate) {
-  try {
-    const counters = await getServerCounters(client, guildId);
-    const index = counters.findIndex((c) => c.id === counterId);
-    if (index === -1) {
-      logger.warn(`Counter ${counterId} not found in guild ${guildId}, cannot save name template`);
-      return false;
-    }
-
-    counters[index] = { ...counters[index], nameTemplate };
-    return await saveServerCounters(client, guildId, counters);
-  } catch (error) {
-    logger.error('Error saving counter name template:', error);
     return false;
   }
 }
