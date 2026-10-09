@@ -183,6 +183,16 @@ export async function getLevelingConfig(client, guildId) {
   }
 }
 
+/**
+ * Normalize a level's role reward value to an array of role IDs.
+ * Older configs stored a single role ID string; newer ones store an array.
+ */
+export function normalizeRewardRoles(value) {
+  if (Array.isArray(value)) return value.filter((id) => typeof id === 'string' && id.length > 0);
+  if (typeof value === 'string' && value.length > 0) return [value];
+  return [];
+}
+
 export async function getUserLevelData(client, guildId, userId) {
   try {
     if (!guildId || !userId) {

@@ -20,7 +20,7 @@ import { InteractionHelper } from '../../../utils/interactionHelper.js';
 import { successEmbed, errorEmbed } from '../../../utils/embeds.js';
 import { logger } from '../../../utils/logger.js';
 import { TitanBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
-import { getLevelingConfig, saveLevelingConfig } from '../../../services/leveling/leveling.js';
+import { getLevelingConfig, saveLevelingConfig, normalizeRewardRoles } from '../../../services/leveling/leveling.js';
 import { sendLevelUpPreview } from '../../../services/leveling/xpSystem.js';
 import { botHasPermission } from '../../../utils/permissionGuard.js';
 import { startDashboardSession } from '../../../utils/dashboardSession.js';
@@ -36,7 +36,7 @@ function buildDashboardEmbed(cfg, guild) {
     const rewards = cfg.roleRewards ?? {};
     const rewardEntries = Object.entries(rewards).sort(([a], [b]) => Number(a) - Number(b));
     const rewardsValue = rewardEntries.length > 0
-        ? rewardEntries.map(([lvl, roleId]) => `Level **${lvl}** → <@&${roleId}>`).join('\n')
+        ? rewardEntries.map(([lvl, roles]) => `Level **${lvl}** → ${normalizeRewardRoles(roles).map((id) => `<@&${id}>`).join(', ')}`).join('\n')
         : '`None configured`';
 
     const ignoredChannels = cfg.ignoredChannels ?? [];
@@ -294,9 +294,9 @@ async function handleRoleRewardAdd(selectInteraction, rootInteraction, cfg, guil
 
     const roleSelect = new RoleSelectMenuBuilder()
         .setCustomId('reward_role')
-        .setPlaceholder('Select a role to award...')
+        .setPlaceholder('Select role(s) to award...')
         .setMinValues(1)
-        .setMaxValues(1)
+        .setMaxValues(5)
         .setRequired(true);
 
     const roleLabel = new LabelBuilder()
@@ -335,14 +335,22 @@ async function handleRoleRewardAdd(selectInteraction, rootInteraction, cfg, guil
         return;
     }
 
-    const roleId = submitted.fields.getField('reward_role').values[0];
+    const roleIds = submitted.fields.getField('reward_role').values;
 
     cfg.roleRewards = cfg.roleRewards ?? {};
-    cfg.roleRewards[level] = roleId;
+    const existingRoles = normalizeRewardRoles(cfg.roleRewards[level]);
+    for (const roleId of roleIds) {
+        if (!existingRoles.includes(roleId)) {
+            existingRoles.push(roleId);
+        }
+    }
+    cfg.roleRewards[level] = existingRoles;
     await saveLevelingConfig(client, guildId, cfg);
 
+    const addedList = roleIds.map((id) => `<@&${id}>`).join(', ');
+    const roleList = existingRoles.map((id) => `<@&${id}>`).join(', ');
     await submitted.reply({
-        embeds: [successEmbed('Role Reward Added', `<@&${roleId}> will now be awarded at level **${level}**.`)],
+        embeds: [successEmbed('Role Reward Added', `${addedList} added to level **${level}** rewards.\nCurrent: ${roleList}`)],
         flags: MessageFlags.Ephemeral,
     });
 
@@ -370,7 +378,7 @@ async function handleRoleRewardRemove(selectInteraction, rootInteraction, cfg, g
         .setCustomId('current_rewards')
         .setLabel('Current rewards (read-only)')
         .setStyle(TextInputStyle.Paragraph)
-        .setValue(entries.map(([lvl, roleId]) => `Level ${lvl}: <@&${roleId}>`).join('\n'))
+        .setValue(entries.map(([lvl, roles]) => `Level ${lvl}: ${normalizeRewardRoles(roles).map((id) => `<@&${id}>`).join(', ')}`).join('\n'))
         .setRequired(false);
 
     const levelInput = new TextInputBuilder()
@@ -403,6 +411,59 @@ async function handleRoleRewardRemove(selectInteraction, rootInteraction, cfg, g
 
     if (isNaN(level) || !cfg.roleRewards?.[level]) {
         await replyUserError(submitted, { type: ErrorTypes.USER_INPUT, message: `No role reward is configured for level **${rawLevel}**.` });
+        return;
+    }
+
+    const roles = normalizeRewardRoles(cfg.roleRewards[level]);
+
+    if (roles.length > 1) {
+        // Multiple roles at this level: let the admin pick exactly which one to remove.
+        const select = new StringSelectMenuBuilder()
+            .setCustomId(`level_cfg_role_reward_remove_pick_${guildId}`)
+            .setPlaceholder('Select a role to remove...')
+            .addOptions(
+                roles.map((roleId) => {
+                    const role = submitted.guild?.roles.cache.get(roleId);
+                    return new StringSelectMenuOptionBuilder()
+                        .setLabel(`${role?.name ?? 'Unknown role'} (level ${level})`)
+                        .setValue(roleId)
+                        .setEmoji('🏷️');
+                }),
+            );
+
+        await submitted.reply({
+            content: `Level **${level}** has multiple reward roles. Select one to remove:`,
+            components: [new ActionRowBuilder().addComponents(select)],
+            flags: MessageFlags.Ephemeral,
+        });
+
+        const picked = await submitted
+            .awaitMessageComponent({
+                filter: (i) =>
+                    i.customId === `level_cfg_role_reward_remove_pick_${guildId}` &&
+                    i.user.id === submitted.user.id,
+                componentType: ComponentType.StringSelect,
+                time: 60_000,
+            })
+            .catch(() => null);
+
+        if (!picked) return;
+
+        const removedId = picked.values[0];
+        const remaining = roles.filter((id) => id !== removedId);
+        if (remaining.length === 0) {
+            delete cfg.roleRewards[level];
+        } else {
+            cfg.roleRewards[level] = remaining;
+        }
+        await saveLevelingConfig(client, guildId, cfg);
+
+        await picked.update({
+            content: `Removed <@&${removedId}> from level **${level}** rewards.`,
+            components: [],
+        });
+
+        await refreshDashboard(rootInteraction, cfg, guildId);
         return;
     }
 

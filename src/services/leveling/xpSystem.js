@@ -2,7 +2,7 @@
 
 import { EmbedBuilder } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import { getLevelingConfig, getXpForLevel, getUserLevelData, saveUserLevelData } from './leveling.js';
+import { getLevelingConfig, getXpForLevel, getUserLevelData, saveUserLevelData, normalizeRewardRoles } from './leveling.js';
 import { logEvent, EVENT_TYPES } from '../loggingService.js';
 import { formatLogLine } from '../../utils/logging/logEmbeds.js';
 import { Mutex } from '../../utils/mutex.js';
@@ -44,7 +44,9 @@ export const addXp = wrapServiceBoundary(async function addXp(client, guild, mem
       logger.info(`🎉 ${member.user.tag} leveled up to level ${levelData.level} in ${guild.name}`);
 
       if (config.roleRewards && config.roleRewards[levelData.level]) {
-        await awardRoleReward(guild, member, config.roleRewards[levelData.level], levelData.level);
+        for (const roleId of normalizeRewardRoles(config.roleRewards[levelData.level])) {
+          await awardRoleReward(guild, member, roleId, levelData.level);
+        }
       }
     }
 
