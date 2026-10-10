@@ -43,11 +43,11 @@ function withTraceContext(context = {}, traceContext = {}) {
 
 // Discord requires the first ack within 3 seconds. The DB-backed middleware
 // below (guild config + command enable check) can hang far longer than that
-// when PostgreSQL is slow (e.g. Neon waking from suspend), which used to
-// kill EVERY command with "Unknown interaction". Bound it: on timeout,
-// proceed with defaults so the command can still ack in time — the command
-// itself handles DB errors gracefully.
-const MIDDLEWARE_DB_TIMEOUT_MS = 2500;
+// when the network/PostgreSQL is slow (e.g. Neon waking from suspend), which
+// used to kill EVERY command with "Unknown interaction". Bound it tightly:
+// on timeout, proceed with defaults so the command can still ack in time —
+// the command itself handles DB errors gracefully.
+const MIDDLEWARE_DB_TIMEOUT_MS = parseInt(process.env.MIDDLEWARE_DB_TIMEOUT_MS) || 1500;
 
 function withMiddlewareTimeout(promise) {
   let timer;
