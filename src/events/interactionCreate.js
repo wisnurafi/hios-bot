@@ -41,6 +41,27 @@ function withTraceContext(context = {}, traceContext = {}) {
   };
 }
 
+// Discord requires the first ack within 3 seconds. The DB-backed middleware
+// below (guild config + command enable check) can hang far longer than that
+// when PostgreSQL is slow (e.g. Neon waking from suspend), which used to
+// kill EVERY command with "Unknown interaction". Bound it: on timeout,
+// proceed with defaults so the command can still ack in time — the command
+// itself handles DB errors gracefully.
+const MIDDLEWARE_DB_TIMEOUT_MS = 2500;
+
+function withMiddlewareTimeout(promise) {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve({ ok: false, timedOut: true }), MIDDLEWARE_DB_TIMEOUT_MS);
+  });
+  // Guard against unhandled rejection if the DB call settles after the race.
+  const guarded = promise.then(
+    (value) => ({ ok: true, value }),
+    (error) => ({ ok: false, error }),
+  );
+  return Promise.race([guarded, timeout]).finally(() => clearTimeout(timer));
+}
+
 export default {
   name: Events.InteractionCreate,
   async execute(interaction, client) {
@@ -135,15 +156,38 @@ export default {
 
             let guildConfig = null;
             if (interaction.guild) {
-              guildConfig = await getGuildConfig(client, interaction.guild.id, interactionTraceContext);
-              const accessKey = resolveSlashAccessKey(interaction);
-              if (!(await isCommandEnabled(client, interaction.guild.id, accessKey, command.category))) {
-                throw createError(
-                  `Command ${accessKey} is disabled in this guild`,
-                  ErrorTypes.CONFIGURATION,
-                  'This command has been disabled for this server.',
-                  withTraceContext({ commandName: accessKey, guildId: interaction.guild.id }, interactionTraceContext)
-                );
+              const middlewareResult = await withMiddlewareTimeout((async () => {
+                const cfg = await getGuildConfig(client, interaction.guild.id, interactionTraceContext);
+                const accessKey = resolveSlashAccessKey(interaction);
+                const enabled = await isCommandEnabled(client, interaction.guild.id, accessKey, command.category);
+                return { cfg, enabled, accessKey };
+              })());
+
+              if (middlewareResult.timedOut) {
+                // DB too slow (e.g. Neon waking from suspend). Fail open with
+                // defaults so the command can still ack within Discord's 3s
+                // window — the command handles DB errors itself. Discord's
+                // declared permissions are still enforced below.
+                logger.warn('Command middleware DB timed out — proceeding with defaults', withTraceContext({
+                  event: 'interaction.middleware.db_timeout',
+                  commandName: interaction.commandName,
+                }, interactionTraceContext));
+                guildConfig = null;
+              } else {
+                if (!middlewareResult.ok) {
+                  // Genuine DB error (not timeout) — preserve old behavior.
+                  throw middlewareResult.error;
+                }
+
+                guildConfig = middlewareResult.value.cfg;
+                if (!middlewareResult.value.enabled) {
+                  throw createError(
+                    `Command ${middlewareResult.value.accessKey} is disabled in this guild`,
+                    ErrorTypes.CONFIGURATION,
+                    'This command has been disabled for this server.',
+                    withTraceContext({ commandName: middlewareResult.value.accessKey, guildId: interaction.guild.id }, interactionTraceContext)
+                  );
+                }
               }
             }
 
