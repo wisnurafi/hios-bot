@@ -8,7 +8,6 @@ import {
   isMaintenanceMode,
 } from '../config/bot.js';
 import botConfig from '../config/bot.js';
-import { handleApplicationModal } from '../commands/Community/apply.js';
 import { handleInteractionError, createError, ErrorTypes, ErrorCodes } from '../utils/errorHandler.js';
 import { InteractionHelper } from '../utils/interactionHelper.js';
 import { createInteractionTraceContext, runWithTraceContext } from '../utils/logger.js';
@@ -30,10 +29,6 @@ const COMMAND_ERROR_SUBTYPES = {
   warnings: 'warnings_view_failed',
   ticket: 'ticket_failed',
   serverstats: 'serverstats_failed',
-  gcreate: 'giveaway_failed',
-  gend: 'giveaway_failed',
-  gdelete: 'giveaway_failed',
-  greroll: 'giveaway_failed',
 };
 
 function withTraceContext(context = {}, traceContext = {}) {
@@ -385,18 +380,6 @@ export default {
             }, interactionTraceContext));
           }
         } else if (interaction.isModalSubmit()) {
-          if (interaction.customId.startsWith('app_modal_')) {
-            try {
-              await handleApplicationModal(interaction);
-            } catch (error) {
-              await handleInteractionError(interaction, error, withTraceContext({
-                type: 'modal',
-                customId: interaction.customId,
-                handler: 'application'
-              }, interactionTraceContext));
-            }
-            return;
-          }
 
           if (
             interaction.customId.startsWith('app_review_')

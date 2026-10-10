@@ -48,18 +48,8 @@ const EVENT_TYPES = {
   REACTION_ROLE_DELETE: 'reactionrole.delete',
   REACTION_ROLE_UPDATE: 'reactionrole.update',
 
-  GIVEAWAY_CREATE: 'giveaway.create',
-  GIVEAWAY_WINNER: 'giveaway.winner',
-  GIVEAWAY_REROLL: 'giveaway.reroll',
-  GIVEAWAY_DELETE: 'giveaway.delete',
-
   COUNTER_UPDATE: 'counter.update',
   COUNTER_CONFIG: 'counter.config',
-
-  APPLICATION_SUBMIT: 'application.submit',
-  APPLICATION_REVIEW: 'application.review',
-
-  REPORT_FILE: 'report.file',
 };
 
 const EVENT_COLORS = {
@@ -91,15 +81,8 @@ const EVENT_COLORS = {
   'reactionrole.create': 0x3498db,
   'reactionrole.delete': 0x8b0000,
   'reactionrole.update': 0xFFA500,
-  'giveaway.create': 0x57F287,
-  'giveaway.winner': 0xFEE75C,
-  'giveaway.reroll': 0x3498DB,
-  'giveaway.delete': 0xE74C3C,
   'counter.update': 0x0099ff,
   'counter.config': 0x5865F2,
-  'application.submit': 0x5865F2,
-  'application.review': 0x57F287,
-  'report.file': 0xED4245,
 };
 
 const EVENT_ICONS = {
@@ -131,21 +114,11 @@ const EVENT_ICONS = {
   'reactionrole.create': '🎭',
   'reactionrole.delete': '🗑️',
   'reactionrole.update': '🔄',
-  'giveaway.create': '🎁',
-  'giveaway.winner': '🎉',
-  'giveaway.reroll': '🔄',
-  'giveaway.delete': '🗑️',
   'counter.update': '📊',
   'counter.config': '⚙️',
-  'application.submit': '📝',
-  'application.review': '📋',
-  'report.file': '🚨',
 };
 
-const CATEGORY_DESTINATION = {
-  application: 'applications',
-  report: 'reports',
-};
+const CATEGORY_DESTINATION = {};
 
 export function resolveLogChannel(config, destination) {
   const channels = config?.logging?.channels || {};

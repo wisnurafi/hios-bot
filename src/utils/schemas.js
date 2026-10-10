@@ -80,26 +80,6 @@ export const GuildConfigSchema = z
   })
   .passthrough();
 
-export const EconomyDataSchema = z
-  .object({
-    wallet: z.number().nonnegative().default(0),
-    bank: z.number().nonnegative().default(0),
-    bankLevel: z.number().int().nonnegative().default(0),
-    dailyStreak: z.number().int().nonnegative().default(0),
-    lastDaily: z.number().int().nonnegative().default(0),
-    lastWeekly: z.number().int().nonnegative().default(0),
-    lastWork: z.number().int().nonnegative().default(0),
-    lastCrime: z.number().int().nonnegative().default(0),
-    lastRob: z.number().int().nonnegative().default(0),
-    lastDeposit: z.number().int().nonnegative().default(0),
-    lastWithdraw: z.number().int().nonnegative().default(0),
-    xp: z.number().int().nonnegative().default(0),
-    level: z.number().int().nonnegative().default(1),
-    inventory: z.record(z.any()).default({}),
-    cooldowns: z.record(z.number().int().nonnegative()).default({})
-  })
-  .passthrough();
-
 const DEFAULT_LOGGING = {
   enabled: false,
   channels: { audit: null, applications: null, reports: null },
@@ -200,13 +180,6 @@ export function normalizeGuildConfig(raw, defaults = {}) {
   });
 
   return stripLegacyLoggingFields(normalized);
-}
-
-export function normalizeEconomyData(raw, defaults = {}) {
-  const base = typeof raw === 'object' && raw !== null ? raw : {};
-  const merged = { ...defaults, ...base };
-  const parsed = EconomyDataSchema.safeParse(merged);
-  return parsed.success ? parsed.data : { ...defaults, ...base };
 }
 
 export function validateGuildConfigOrThrow(rawConfig, context = {}) {

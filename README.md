@@ -1,6 +1,6 @@
 # TitanBot - Ultimate Discord Bot
 
-**TitanBot** is a powerful, feature-rich Discord bot designed to enhance your server experience with comprehensive moderation tools, engaging economy systems, utility features, and much more. Built with modern Discord.js v14 and PostgreSQL for optimal performance and data persistence.
+**TitanBot** is a Discord bot focused on server management essentials: moderation, TempVoice rooms, tickets, verification, leveling, reaction roles, server stats, logging, and welcome automation. Built with modern Discord.js v14 and PostgreSQL for optimal performance and data persistence.
 
 [![Support Server](https://img.shields.io/badge/-Support%20Server-%235865F2?logo=discord&logoColor=white&style=flat-square&logoWidth=20)](https://discord.gg/8kJBYhTGW9)
 [![Discord.js](https://img.shields.io/npm/v/discord.js?style=flat-square&labelColor=%23202225&color=%23202225&logo=npm&logoColor=white&logoWidth=20)](https://www.npmjs.com/package/discord.js)
@@ -29,15 +29,9 @@ TitanBot offers a complete suite of tools for Discord server management and comm
 - **User Notes** - Keep detailed moderation records
 - **Case Management** - View and track all mod actions
 
-### Economy System
-- **Shop & Inventory** - Buy and manage items
-- **Gambling** - Risk it for rewards
-- **Pay System** - Transfer money between users
-
-### Fun & Entertainment
-- **Random Facts** - Learn something new
-- **Wanted Poster** - Create fun wanted images
-- **Text Reversal** - Reverse any text
+### TempVoice (Join to Create)
+- **Auto Voice Rooms** - Temporary voice channels on demand
+- **Control Panel** - Manage rooms from #interface
 
 ### Advanced Ticket System
 - **Claim & Priority** - Staff ticket management
@@ -62,31 +56,19 @@ TitanBot offers a complete suite of tools for Discord server management and comm
 - **Level Roles** - Auto-assign roles by level
 - **Custom Configuration** - Personalize leveling
 
-### Giveaways & Events
-- **Multiple Winners** - Support multi-winner giveaways
-- **Auto Picking** - Automatic winner selection
-- **Reroll System** - Pick new winners if needed
+### Verification
+- **Verify Gate** - Verification flow for new members
+- **Auto Verify** - Automatic verification options
 
-### Birthday System
-- **Birthday Tracking** - Never miss a birthday
-- **Auto Announcements** - Celebrate automatically
-- **Timezone Support** - Accurate worldwide tracking
-
-### Utility Tools
-- **Report System** - Report issues to staff
-- **Todo Lists** - Personal task management
-- **First Message** - Jump to channel's first message
+### Logging
+- **Audit Logs** - Message, member, role and channel events
+- **Dashboard** - Toggle log categories per guild
 
 ### Welcome System
 - **Welcome Messages** - Greet new members
 - **Auto Roles** - Assign roles on join
 - **Custom Embeds** - Personalized messages
-  
-### Music
-- **24/7 Mode** - Play music 24/7
-- **Interative Button System** - Manage music through buttons
-- **Supports EVERY platform** - Supports spotify, deezer, youtube, apple music
-  
+
 </td>
 </tr>
 </table>
@@ -125,23 +107,7 @@ TitanBot is fully containerized for easy deployment.
    curl http://localhost:3000/health
    ```
 
-This starts the bot and PostgreSQL. The compose file sets `POSTGRES_SSL=false` and `AUTO_MIGRATE=true` for the bundled database. Music uses public Lavalink v4 nodes from `lavalink/nodes.json` by default.
-
-### Music
-
-Music uses [Lavalink v4](https://github.com/lavalink-devs/Lavalink) via [Riffy](https://github.com/riffy-rb/riffy), similar to [Musicify](https://github.com/codebymitch/Musicify).
-
-1. By default, the bot loads multiple public v4 SSL nodes from [`lavalink/nodes.json`](lavalink/nodes.json) (sourced from [lavalink.darrennathanael.com](https://lavalink.darrennathanael.com/SSL/Lavalink-SSL/)). Edit that file to add or remove nodes.
-2. To self-host Lavalink instead, run `docker compose --profile local-lavalink up -d` and set single-node env vars in `.env`:
-   ```env
-   LAVALINK_HOST=lavalink
-   LAVALINK_PORT=2333
-   LAVALINK_PASSWORD=youshallnotpass
-   LAVALINK_SECURE=false
-   ```
-   Remove or rename `lavalink/nodes.json` so the bot falls back to those env vars.
-3. Override nodes inline with `LAVALINK_NODES` (JSON array) or point at another file with `LAVALINK_NODES_FILE`.
-4. Use `/play <song>` from a voice channel, or `/join` to connect without playing. Prefix shortcuts: `join`, `np`, `leave`, `pause`, `resume`, `skip`, `stop`, `volume <0-100>`, or `music <subcommand>`. Use `/nowplaying` and `/queue` for status; `/music` for loop, shuffle, seek, and other controls.
+This starts the bot and PostgreSQL. The compose file sets `POSTGRES_SSL=false` and `AUTO_MIGRATE=true` for the bundled database.
 
 ### Using GitHub Container Registry
 

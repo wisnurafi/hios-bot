@@ -25,10 +25,7 @@ export const DASHBOARD_CATEGORIES = [
   'member',
   'leveling',
   'reactionrole',
-  'giveaway',
   'counter',
-  'application',
-  'report',
 ];
 
 const DASHBOARD_CATEGORY_EMOJIS = {
@@ -38,10 +35,7 @@ const DASHBOARD_CATEGORY_EMOJIS = {
   member: '👥',
   leveling: '📈',
   reactionrole: '🎭',
-  giveaway: '🎁',
   counter: '📊',
-  application: '📝',
-  report: '🚨',
 };
 
 export const DASHBOARD_CATEGORY_LABELS = {
@@ -51,10 +45,7 @@ export const DASHBOARD_CATEGORY_LABELS = {
   member: 'Members',
   leveling: 'Leveling',
   reactionrole: 'Reaction Roles',
-  giveaway: 'Giveaways',
   counter: 'Counters',
-  application: 'Applications',
-  report: 'Reports',
 };
 
 function createBackButton() {

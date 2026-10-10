@@ -8,7 +8,6 @@ import {
 } from '../utils/database.js';
 import { sanitizeInput } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
-import { handleMusicVoiceState } from '../services/music/musicVoiceState.js';
 import { enforceWaitingRoom } from '../services/tempvoiceInterface.js';
 
 const channelCreationCooldown = new Map();
@@ -288,13 +287,6 @@ userLimit: userLimit === 0 ? undefined : userLimit,
             } catch (error) {
                 logger.error(`Failed to delete temporary channel ${channel.id}:`, error);
             }
-        }
-
-
-        if (!memberIsBot && client.config?.features?.music) {
-            handleMusicVoiceState(client, oldState, newState).catch((error) => {
-                logger.error('Music voice state handler error:', error);
-            });
         }
     }
 };

@@ -546,7 +546,7 @@ export function handleTaskError(taskName, error, context = {}) {
 
 /**
  * Wrap a background task so it can never produce an unhandled rejection.
- * Usage: cron.schedule('* * * * *', runSafeTask('giveaways', () => checkGiveaways(client)))
+ * Usage: cron.schedule('every 15 minutes', runSafeTask('counter_update', () => updateAllCounters(client)))
  */
 export function runSafeTask(taskName, fn, context = {}) {
     return async (...args) => {
