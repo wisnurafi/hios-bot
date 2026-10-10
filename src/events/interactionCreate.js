@@ -387,6 +387,7 @@ export default {
             || interaction.customId.startsWith('config_wizard_modal:')
             || interaction.customId.startsWith('log_dash_channel_modal:')
             || interaction.customId.startsWith('log_dash_filter_modal:')
+            || interaction.customId.startsWith('wh_dash_modal:')
           ) {
             logger.debug(`Skipping modal handler lookup for inline-awaited modal: ${interaction.customId}`, {
               event: 'interaction.modal.inline_skipped',

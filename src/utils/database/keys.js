@@ -116,6 +116,10 @@ export function getServerCountersKey(guildId) {
     return `guild:${guildId}:counters`;
 }
 
+export function getManagedWebhooksKey(guildId) {
+    return `guild:${guildId}:webhooks:managed`;
+}
+
 export function getGiveawayEntryKey(userId, giveawayId) {
     return `giveaway:${userId}:${giveawayId}`;
 }
