@@ -80,7 +80,7 @@ export function resolvePostgresPoolConfig() {
         max: parseInt(process.env.POSTGRES_MAX_CONNECTIONS) || 20,
         min: parseInt(process.env.POSTGRES_MIN_CONNECTIONS) || 2,
         idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
-        connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 10000,
+        connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 30000, // 30s: covers Neon free-tier cold start (10-30s wake)
         application_name: 'hios-bot',
         statement_timeout: process.env.NODE_ENV === 'production' ? 30000 : 0,
         keepalives: 1,
@@ -117,7 +117,7 @@ export const pgConfig = {
         max: parseInt(process.env.POSTGRES_MAX_CONNECTIONS) || 20,
         min: parseInt(process.env.POSTGRES_MIN_CONNECTIONS) || 2,
         idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
-        connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 10000,
+        connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 30000, // 30s: covers Neon free-tier cold start (10-30s wake)
 
         application_name: 'hios-bot',
         statement_timeout: process.env.NODE_ENV === 'production' ? 30000 : 0,

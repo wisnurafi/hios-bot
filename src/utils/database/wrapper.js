@@ -3,6 +3,10 @@ import { MemoryStorage } from '../memoryStorage.js';
 import { logger } from '../logger.js';
 import { validateGuildConfigOrThrow } from '../schemas.js';
 
+// How often to retry PostgreSQL while running in degraded (in-memory) mode.
+// Mirrors hios-ronda's reconnect loop; cheap and self-stopping on success.
+const RECONNECT_INTERVAL_MS = 5 * 60 * 1000;
+
 class DatabaseWrapper {
     constructor() {
         this.initialized = false;
@@ -11,6 +15,8 @@ class DatabaseWrapper {
         this.connectionType = 'none';
         this.degradedModeWarningShown = false;
         this.degradedReason = null;
+        this.reconnectTimer = null;
+        this.reconnecting = false;
     }
 
     async initialize() {
@@ -54,6 +60,91 @@ class DatabaseWrapper {
         logger.warn('⚠️ Please check PostgreSQL connection and restart the bot when fixed');
         this.initialized = true;
         this.degradedModeWarningShown = true;
+        // Neon free tier suspends compute when idle — the DB may just be
+        // waking up. Keep retrying in the background instead of staying
+        // degraded until a manual restart.
+        this.startReconnectLoop();
+    }
+
+    startReconnectLoop() {
+        if (this.reconnectTimer) {
+            return;
+        }
+        logger.info('Starting PostgreSQL reconnect loop (every 5 minutes)...');
+        this.reconnectTimer = setInterval(() => {
+            this.attemptReconnect().catch((error) => {
+                logger.warn('PostgreSQL reconnect attempt failed:', error.message);
+            });
+        }, RECONNECT_INTERVAL_MS);
+        if (typeof this.reconnectTimer.unref === 'function') {
+            this.reconnectTimer.unref();
+        }
+    }
+
+    stopReconnectLoop() {
+        if (this.reconnectTimer) {
+            clearInterval(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+    }
+
+    async attemptReconnect() {
+        if (!this.useFallback || this.reconnecting) {
+            return;
+        }
+        this.reconnecting = true;
+        try {
+            logger.info('Attempting PostgreSQL reconnect...');
+            // Drop the cached failed attempt so pgDb makes a fresh one.
+            pgDb.connectionPromise = null;
+            const connected = await pgDb.connect();
+            if (!connected) {
+                logger.warn('PostgreSQL reconnect failed — will retry in 5 minutes.');
+                return;
+            }
+            await this.flushMemoryToPostgres();
+            this.db = pgDb;
+            this.useFallback = false;
+            this.connectionType = 'postgresql';
+            this.degradedReason = null;
+            this.stopReconnectLoop();
+            logger.info('✅ PostgreSQL reconnected — recovered from degraded mode');
+        } finally {
+            this.reconnecting = false;
+        }
+    }
+
+    // Best-effort: copy everything written to memory while degraded into
+    // PostgreSQL before swapping backends. PostgreSQL received no writes
+    // during degraded mode (single process), so memory holds the newest
+    // state. TTLs are not preserved and expired keys are already skipped by
+    // MemoryStorage.list. Per-key failures are logged, never fatal.
+    async flushMemoryToPostgres() {
+        const memory = this.db;
+        if (!memory || typeof memory.list !== 'function') {
+            return;
+        }
+        let keys = [];
+        try {
+            keys = await memory.list('');
+        } catch (error) {
+            logger.warn('Could not list memory keys for flush:', error.message);
+            return;
+        }
+        let ok = 0;
+        for (const key of keys) {
+            try {
+                const value = await memory.get(key);
+                if (value === null || value === undefined) {
+                    continue;
+                }
+                await pgDb.set(key, value);
+                ok += 1;
+            } catch (error) {
+                logger.warn(`Failed to flush memory key ${key} to PostgreSQL:`, error.message);
+            }
+        }
+        logger.info(`Flushed ${ok}/${keys.length} memory keys to PostgreSQL`);
     }
 
     async set(key, value, ttl = null) {
