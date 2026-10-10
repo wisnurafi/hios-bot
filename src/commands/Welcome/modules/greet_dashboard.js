@@ -194,6 +194,12 @@ export default {
     prefixOnly: false,
     async execute(interaction, config, client) {
         try {
+            // Ack FIRST: getWelcomeConfig() can stall past Discord's 3s window.
+            await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
+            if (!interaction.deferred) {
+                return;
+            }
+
             const guildId = interaction.guild.id;
             const cfg = await getWelcomeConfig(client, guildId);
 
@@ -203,11 +209,6 @@ export default {
                     ErrorTypes.CONFIGURATION,
                     'Neither Welcome nor Goodbye has been set up yet. Run `/welcome setup` or `/goodbye setup` first.',
                 );
-            }
-
-            await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
-            if (!interaction.deferred) {
-                return;
             }
 
             const selectMenu = buildSelectMenu(guildId);

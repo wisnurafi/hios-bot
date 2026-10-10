@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { successEmbed } from '../../utils/embeds.js';
+import { logger } from '../../utils/logger.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
 import { HiosBotError, ErrorTypes } from '../../utils/errorHandler.js';
@@ -21,6 +22,18 @@ export default {
     category: "moderation",
 
     async execute(interaction, config, client) {
+        // Ack FIRST: banUser() below does Discord API + DB work that can take
+        // longer than Discord's 3s ack window when the network/DB is slow.
+        const deferSuccess = await InteractionHelper.safeDefer(interaction);
+        if (!deferSuccess) {
+            logger.warn(`Ban interaction defer failed`, {
+                userId: interaction.user.id,
+                guildId: interaction.guildId,
+                commandName: 'ban',
+            });
+            return;
+        }
+
         const user = interaction.options.getUser("target");
         const reason = interaction.options.getString("reason") || "No reason provided";
 

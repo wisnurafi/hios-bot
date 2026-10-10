@@ -84,6 +84,18 @@ export default {
     category: "moderation",
 
     async execute(interaction, config, client) {
+        // Ack FIRST: the getFromDb() call below can stall past Discord's 3s
+        // ack window when the DB is slow (e.g. Neon waking from suspend).
+        const deferSuccess = await InteractionHelper.safeDefer(interaction);
+        if (!deferSuccess) {
+            logger.warn(`Usernotes interaction defer failed`, {
+                userId: interaction.user.id,
+                guildId: interaction.guildId,
+                commandName: 'usernotes',
+            });
+            return;
+        }
+
         const subcommand = interaction.options.getSubcommand();
         const targetUser = interaction.options.getUser("target");
         const guildId = interaction.guild.id;

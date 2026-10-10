@@ -140,6 +140,12 @@ export default {
     prefixOnly: false,
     async execute(interaction, config, client) {
         try {
+            // Ack FIRST: getGuildConfig() can stall past Discord's 3s window.
+            await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
+            if (!interaction.deferred) {
+                return;
+            }
+
             const guildId = interaction.guild.id;
             const guildConfig = await getGuildConfig(client, guildId);
 
@@ -169,8 +175,6 @@ export default {
                     flags: MessageFlags.Ephemeral
                 });
             }
-
-            await InteractionHelper.safeDefer(interaction, { ephemeral: true });
 
             const selectMenu = buildSelectMenu(guildId);
 

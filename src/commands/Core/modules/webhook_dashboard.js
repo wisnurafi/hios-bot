@@ -700,14 +700,18 @@ async function handleDeleteYes(interaction, client, guildId, userId, records, ke
 // Component router
 // ---------------------------------------------------------------------------
 
+// Ack-first routing: Discord requires the first ack (showModal / deferUpdate /
+// reply) within 3 seconds of the component interaction. DB reads/writes and
+// Discord API calls happen AFTER the ack, never before — otherwise a slow DB
+// (e.g. Neon waking) or flaky network kills the interaction with
+// "Unknown interaction" (10062) / "didn't respond in time".
 async function routeComponent(interaction, client, guildId, userId) {
   const raw = interaction.customId.slice('wh_dash_'.length);
   const [action, arg] = raw.split(':');
 
-  let records = await loadRecords(guildId);
-
   switch (action) {
     case 'create':
+      // No DB needed at all — show the modal immediately.
       await handleCreateModal(interaction, guildId, userId);
       return;
     case 'createch':
@@ -715,48 +719,60 @@ async function routeComponent(interaction, client, guildId, userId) {
       return;
     case 'refresh': {
       await interaction.deferUpdate().catch(() => {});
-      records = await pruneRecords(client, guildId, records);
+      const records = await pruneRecords(client, guildId, await loadRecords(guildId));
       await interaction.editReply(mainView(interaction.guild, records)).catch(() => {});
       return;
     }
     case 'close':
+      // Deleting the message does NOT ack the interaction — defer first.
+      await interaction.deferUpdate().catch(() => {});
       clearSession(guildId, userId);
       await interaction.message?.delete().catch(() => {});
       return;
     case 'back': {
-      records = await pruneRecords(client, guildId, records);
+      await interaction.deferUpdate().catch(() => {});
+      const records = await pruneRecords(client, guildId, await loadRecords(guildId));
       await interaction.editReply(mainView(interaction.guild, records)).catch(() => {});
       return;
     }
     case 'pick': {
+      await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       const key = interaction.values?.[0];
       const record = findRecord(records, key);
       if (!record) {
         await ephemeralError(interaction, 'Webhook not found. It may have been deleted.');
         return;
       }
-      await interaction.deferUpdate().catch(() => {});
       await interaction.editReply(detailView(record)).catch(() => {});
       return;
     }
     case 'detail': {
+      await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       const record = findRecord(records, arg);
       if (!record) {
         await ephemeralError(interaction, 'Webhook not found. It may have been deleted.');
         return;
       }
-      await interaction.deferUpdate().catch(() => {});
       await interaction.editReply(detailView(record)).catch(() => {});
       return;
     }
-    case 'copy':
+    case 'copy': {
+      // Direct reply IS the ack — one necessary DB read, then reply at once.
+      const records = await loadRecords(guildId);
       await handleCopy(interaction, records, arg);
       return;
-    case 'test':
+    }
+    case 'test': {
+      await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       await handleTest(interaction, client, records, arg);
       return;
-    case 'move':
+    }
+    case 'move': {
       await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       await interaction.editReply(
         channelPickView(
           '🔀 Move Webhook',
@@ -765,33 +781,56 @@ async function routeComponent(interaction, client, guildId, userId) {
         ),
       ).catch(() => {});
       return;
-    case 'movech':
+    }
+    case 'movech': {
+      const records = await loadRecords(guildId);
       await handleMoveChannel(interaction, client, guildId, records, arg);
       return;
-    case 'avatar':
+    }
+    case 'avatar': {
       await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       await handleAvatarMenu(interaction, records, arg);
       return;
-    case 'avlink':
+    }
+    case 'avlink': {
+      // Needs the record for the existence check — the one unavoidable DB
+      // read before showModal (showModal itself is the ack and must be the
+      // first response, so it can't be preceded by a defer).
+      const records = await loadRecords(guildId);
       await handleAvatarLinkModal(interaction, client, guildId, userId, records, arg);
       return;
-    case 'avup':
+    }
+    case 'avup': {
+      await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       await handleAvatarUpload(interaction, client, guildId, userId, records, arg);
       return;
-    case 'avrm':
+    }
+    case 'avrm': {
       await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       await applyAvatar(interaction, client, guildId, records, arg, null);
       return;
-    case 'rename':
+    }
+    case 'rename': {
+      // Needs the record to prefill the modal — see 'avlink' note above.
+      const records = await loadRecords(guildId);
       await handleRenameModal(interaction, client, guildId, userId, records, arg);
       return;
-    case 'delete':
+    }
+    case 'delete': {
       await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       await handleDeleteConfirm(interaction, client, guildId, records, arg);
       return;
-    case 'delyes':
+    }
+    case 'delyes': {
+      await interaction.deferUpdate().catch(() => {});
+      const records = await loadRecords(guildId);
       await handleDeleteYes(interaction, client, guildId, userId, records, arg);
       return;
+    }
     default:
       logger.warn(`Unknown webhook dashboard action: ${action}`, { event: 'webhook.unknown_action', guildId, userId });
   }

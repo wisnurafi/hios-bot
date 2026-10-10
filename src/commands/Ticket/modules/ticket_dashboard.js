@@ -259,6 +259,19 @@ export default {
     prefixOnly: false,
     async execute(interaction, config, client) {
         try {
+            // Ack FIRST: getGuildConfig() + panel/API reads below can stall
+            // past Discord's 3s window. Public defer preserves the dashboard's
+            // current (public) visibility.
+            const deferSuccess = await InteractionHelper.safeDefer(interaction);
+            if (!deferSuccess) {
+                logger.warn(`Ticket dashboard interaction defer failed`, {
+                    userId: interaction.user.id,
+                    guildId: interaction.guildId,
+                    commandName: 'ticket dashboard',
+                });
+                return;
+            }
+
             const guildId = interaction.guild.id;
             const guildConfig = await getGuildConfig(client, guildId);
 

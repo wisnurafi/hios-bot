@@ -229,6 +229,12 @@ export default {
     prefixOnly: false,
     async execute(interaction, config, client) {
         try {
+            // Ack FIRST: getGuildConfig() can stall past Discord's 3s window.
+            await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
+            if (!interaction.deferred) {
+                return;
+            }
+
             const guildId = interaction.guild.id;
             const guildConfig = await getGuildConfig(client, guildId);
             const cfg = guildConfig.verification;
@@ -240,8 +246,6 @@ export default {
                     'The verification system has not been set up yet. Run `/verification setup` first.',
                 );
             }
-
-            await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
 
             let verifiedUserCount = 0;
             let conflictSummary = '';
