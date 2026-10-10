@@ -120,6 +120,10 @@ export function getManagedWebhooksKey(guildId) {
     return `guild:${guildId}:webhooks:managed`;
 }
 
+export function getControlLockdownKey(guildId) {
+    return `guild:${guildId}:control`;
+}
+
 export function getGiveawayEntryKey(userId, giveawayId) {
     return `giveaway:${userId}:${giveawayId}`;
 }

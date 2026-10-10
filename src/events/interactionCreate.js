@@ -16,6 +16,7 @@ import { enforceAbuseProtection, formatCooldownDuration } from '../utils/abusePr
 import { isCommandEnabled } from '../services/commandAccessService.js';
 import { resolveSlashAccessKey } from '../utils/messageAdapter.js';
 import { isCollectorManagedComponent } from '../utils/collectorComponents.js';
+import { loadControlLockdown, checkControlLockdown } from '../utils/controlLockdown.js';
 import { ResponseCoordinator } from '../utils/responseCoordinator.js';
 import { enforceDefaultCommandPermissions } from '../utils/permissionGuard.js';
 
@@ -160,7 +161,8 @@ export default {
                 const cfg = await getGuildConfig(client, interaction.guild.id, interactionTraceContext);
                 const accessKey = resolveSlashAccessKey(interaction);
                 const enabled = await isCommandEnabled(client, interaction.guild.id, accessKey, command.category);
-                return { cfg, enabled, accessKey };
+                const lockdown = await loadControlLockdown(interaction.guild.id);
+                return { cfg, enabled, accessKey, lockdown };
               })());
 
               if (middlewareResult.timedOut) {
@@ -186,6 +188,28 @@ export default {
                     ErrorTypes.CONFIGURATION,
                     'This command has been disabled for this server.',
                     withTraceContext({ commandName: middlewareResult.value.accessKey, guildId: interaction.guild.id }, interactionTraceContext)
+                  );
+                }
+
+                // Control lockdown: restrict WHERE (channels) and BY WHOM (users)
+                // slash commands can be invoked. Empty lists = no restriction.
+                // Bot owner and excepted commands bypass. On middleware DB
+                // timeout we fail open (no lockdown), same as the config above.
+                // Component interactions are intentionally NOT covered — public
+                // panels (ticket, verification, reaction roles) must keep working.
+                const lockdownBlock = checkControlLockdown(middlewareResult.value.lockdown, {
+                  commandName: interaction.commandName,
+                  userId: interaction.user.id,
+                  channelId: interaction.channelId,
+                  parentChannelId: interaction.channel?.parentId ?? null,
+                  isOwner: isBotOwner(interaction.user.id),
+                });
+                if (lockdownBlock) {
+                  throw createError(
+                    `Control lockdown blocked /${interaction.commandName} (${lockdownBlock.reason})`,
+                    ErrorTypes.PERMISSION,
+                    lockdownBlock.message,
+                    withTraceContext({ commandName: interaction.commandName, guildId: interaction.guild.id }, interactionTraceContext)
                   );
                 }
               }
