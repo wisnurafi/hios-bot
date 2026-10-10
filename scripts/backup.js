@@ -104,7 +104,7 @@ async function run() {
 
   const outputPath = args.output
     ? path.resolve(args.output)
-    : path.join(backupDir, `titanbot-backup-${createTimestamp()}.dump`);
+    : path.join(backupDir, `hios-bot-backup-${createTimestamp()}.dump`);
 
   const dumpArgs = [
     '--format=custom',

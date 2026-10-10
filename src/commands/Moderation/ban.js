@@ -2,7 +2,7 @@ import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 import { successEmbed } from '../../utils/embeds.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
-import { TitanBotError, ErrorTypes } from '../../utils/errorHandler.js';
+import { HiosBotError, ErrorTypes } from '../../utils/errorHandler.js';
 
 export default {
     data: new SlashCommandBuilder()
@@ -25,7 +25,7 @@ export default {
         const reason = interaction.options.getString("reason") || "No reason provided";
 
         if (!user) {
-            throw new TitanBotError(
+            throw new HiosBotError(
                 'Missing target user',
                 ErrorTypes.USER_INPUT,
                 'You must specify a user to ban.',
@@ -34,14 +34,14 @@ export default {
         }
 
         if (user.id === interaction.user.id) {
-            throw new TitanBotError(
+            throw new HiosBotError(
                 'Cannot ban self',
                 ErrorTypes.VALIDATION,
                 'You cannot ban yourself.',
             );
         }
         if (user.id === client.user.id) {
-            throw new TitanBotError(
+            throw new HiosBotError(
                 'Cannot ban bot',
                 ErrorTypes.VALIDATION,
                 'You cannot ban the bot.',

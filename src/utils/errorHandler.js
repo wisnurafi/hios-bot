@@ -1,7 +1,7 @@
 // errorHandler.js — the single entry point for all error handling.
 //
 // Rules:
-// 1. Commands/handlers: throw TitanBotError (via createError) or let errors propagate;
+// 1. Commands/handlers: throw HiosBotError (via createError) or let errors propagate;
 //    interactionCreate routes them through handleInteractionError. For expected user-facing
 //    failures (validation, cooldowns), use replyUserError.
 //    Do NOT wrap a command's execute() body in a try/catch whose only purpose is to call
@@ -38,10 +38,10 @@ export const ErrorTypes = {
     UNKNOWN: 'unknown'
 };
 
-export class TitanBotError extends Error {
+export class HiosBotError extends Error {
     constructor(message, type = ErrorTypes.UNKNOWN, userMessage = null, context = {}) {
         super(message);
-        this.name = 'TitanBotError';
+        this.name = 'HiosBotError';
         this.type = type;
         this.userMessage = userMessage;
         this.context = context;
@@ -98,7 +98,7 @@ const USER_FACING_ERROR_HINTS = [
 ];
 
 function isUserFacingPlainError(error) {
-    if (error instanceof TitanBotError) {
+    if (error instanceof HiosBotError) {
         return false;
     }
 
@@ -163,7 +163,7 @@ function inferErrorTypeFromUserMessage(message = '') {
 }
 
 function normalizeInteractionError(error, context = {}) {
-    if (error instanceof TitanBotError) {
+    if (error instanceof HiosBotError) {
         return error;
     }
 
@@ -182,7 +182,7 @@ function normalizeInteractionError(error, context = {}) {
 }
 
 export function categorizeError(error) {
-    if (error instanceof TitanBotError) {
+    if (error instanceof HiosBotError) {
         return error.type;
     }
 
@@ -592,12 +592,12 @@ export function createError(message, type = ErrorTypes.UNKNOWN, userMessage = nu
         errorCode: context?.errorCode || getDefaultErrorCodeByType(type)
     };
 
-    return new TitanBotError(message, type, userMessage, normalizedContext);
+    return new HiosBotError(message, type, userMessage, normalizedContext);
 }
 
 export default {
     ErrorTypes,
-    TitanBotError,
+    HiosBotError,
     categorizeError,
     getUserMessage,
     replyUserError,

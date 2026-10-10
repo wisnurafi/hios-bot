@@ -2,7 +2,7 @@
 
 import { PermissionFlagsBits } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import { TitanBotError, ErrorTypes } from '../../utils/errorHandler.js';
+import { HiosBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { logModerationAction } from '../../utils/moderation.js';
 
 function getTargetLabel(target) {
@@ -123,12 +123,12 @@ export class ModerationService {
   static assertModerationHierarchy(moderator, target, action) {
     const botCheck = this.validateBotHierarchy(target, action);
     if (!botCheck.valid) {
-      throw new TitanBotError(botCheck.error, ErrorTypes.PERMISSION, botCheck.error);
+      throw new HiosBotError(botCheck.error, ErrorTypes.PERMISSION, botCheck.error);
     }
 
     const modCheck = this.validateHierarchy(moderator, target, action);
     if (!modCheck.valid) {
-      throw new TitanBotError(modCheck.error, ErrorTypes.PERMISSION, modCheck.error);
+      throw new HiosBotError(modCheck.error, ErrorTypes.PERMISSION, modCheck.error);
     }
   }
 
@@ -141,7 +141,7 @@ export class ModerationService {
   }) {
     try {
       if (!guild || !user || !moderator) {
-        throw new TitanBotError(
+        throw new HiosBotError(
           'Missing required parameters',
           ErrorTypes.VALIDATION,
           'Guild, user, and moderator are required'
@@ -166,7 +166,7 @@ export class ModerationService {
         ]);
 
         if (!isOwner && !hasHighPerms) {
-            throw new TitanBotError(
+            throw new HiosBotError(
                 'You do not have sufficient permissions to ban users who are not in the server.',
                 ErrorTypes.PERMISSION,
                 'You need "Manage Server" or "Administrator" permissions to ban users not currently in the guild.'
@@ -214,7 +214,7 @@ export class ModerationService {
   }) {
     try {
       if (!guild || !member || !moderator) {
-        throw new TitanBotError(
+        throw new HiosBotError(
           'Missing required parameters',
           ErrorTypes.VALIDATION,
           'Guild, member, and moderator are required'
@@ -225,7 +225,7 @@ export class ModerationService {
 
       if (!member.kickable) {
         const targetLabel = getTargetLabel(member);
-        throw new TitanBotError(
+        throw new HiosBotError(
           'Cannot kick member',
           ErrorTypes.PERMISSION,
           `I cannot kick **${targetLabel}**. They may have **Administrator** permission or a managed/integration role. ` +
@@ -272,7 +272,7 @@ export class ModerationService {
   }) {
     try {
       if (!guild || !member || !moderator || !durationMs) {
-        throw new TitanBotError(
+        throw new HiosBotError(
           'Missing required parameters',
           ErrorTypes.VALIDATION,
           'Guild, member, moderator, and duration are required'
@@ -283,7 +283,7 @@ export class ModerationService {
 
       if (!member.moderatable) {
         const targetLabel = getTargetLabel(member);
-        throw new TitanBotError(
+        throw new HiosBotError(
           'Cannot timeout member',
           ErrorTypes.PERMISSION,
           `I cannot timeout **${targetLabel}**. They may have **Administrator** permission or a managed/integration role. ` +
@@ -333,7 +333,7 @@ export class ModerationService {
   }) {
     try {
       if (!guild || !member || !moderator) {
-        throw new TitanBotError(
+        throw new HiosBotError(
           'Missing required parameters',
           ErrorTypes.VALIDATION,
           'Guild, member, and moderator are required'
@@ -344,7 +344,7 @@ export class ModerationService {
 
       if (!member.moderatable) {
         const targetLabel = getTargetLabel(member);
-        throw new TitanBotError(
+        throw new HiosBotError(
           'Cannot modify member',
           ErrorTypes.PERMISSION,
           `I cannot modify **${targetLabel}**. They may have **Administrator** permission or a managed/integration role. ` +
@@ -353,7 +353,7 @@ export class ModerationService {
       }
 
       if (!member.isCommunicationDisabled()) {
-        throw new TitanBotError(
+        throw new HiosBotError(
           'User not timed out',
           ErrorTypes.VALIDATION,
           `${member.user.tag} is not currently timed out`
@@ -396,7 +396,7 @@ export class ModerationService {
   }) {
     try {
       if (!guild || !user || !moderator) {
-        throw new TitanBotError(
+        throw new HiosBotError(
           'Missing required parameters',
           ErrorTypes.VALIDATION,
           'Guild, user, and moderator are required'
@@ -407,7 +407,7 @@ export class ModerationService {
       const banInfo = bans.get(user.id);
 
       if (!banInfo) {
-        throw new TitanBotError(
+        throw new HiosBotError(
           'User not banned',
           ErrorTypes.VALIDATION,
           `${user.tag} is not currently banned from this server`

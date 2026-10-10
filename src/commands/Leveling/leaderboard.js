@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, MessageFlags } from 'discord.js';
 import { logger } from '../../utils/logger.js';
-import { TitanBotError, ErrorTypes } from '../../utils/errorHandler.js';
+import { HiosBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getLeaderboard, getLevelingConfig, getXpForLevel } from '../../services/leveling/leveling.js';
 
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -31,7 +31,7 @@ export default {
     const leaderboard = await getLeaderboard(client, interaction.guildId, 10);
 
     if (leaderboard.length === 0) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'No leaderboard data found',
         ErrorTypes.DATABASE,
         'No level data found yet. Start chatting to gain XP!'

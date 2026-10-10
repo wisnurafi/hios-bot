@@ -1,4 +1,4 @@
-TitanBot Roadmap / Structure Overview
+hios-bot Roadmap / Structure Overview
 
 Goal
 - Keep this as a practical map of the codebase.

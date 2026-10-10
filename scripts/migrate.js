@@ -143,7 +143,7 @@ const migrate = async () => {
 
     logger.info('✨ Migration completed successfully!');
     logger.info(`📌 Schema version recorded: v${EXPECTED_SCHEMA_VERSION} (${EXPECTED_SCHEMA_LABEL})`);
-    logger.info('📚 Your database is now ready for TitanBot.');
+    logger.info('📚 Your database is now ready for hios-bot.');
   } catch (error) {
     logger.error('❌ Migration failed:', error);
     process.exit(1);

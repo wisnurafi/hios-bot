@@ -13,7 +13,7 @@ import {
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
 import { successEmbed } from '../../../utils/embeds.js';
 import { logger } from '../../../utils/logger.js';
-import { TitanBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
+import { HiosBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { 
     getJoinToCreateConfig, 
     updateJoinToCreateConfig,
@@ -30,7 +30,7 @@ export default {
         const currentConfig = await getJoinToCreateConfig(client, guildId);
 
         if (!currentConfig.triggerChannels.includes(triggerChannel.id)) {
-            throw new TitanBotError(
+            throw new HiosBotError(
                 `Channel ${triggerChannel.id} is not a Join to Create trigger`,
                 ErrorTypes.VALIDATION,
                 `${triggerChannel} is not configured as a Join to Create trigger channel.`
@@ -126,13 +126,13 @@ time: 60000
                         break;
                 }
             } catch (error) {
-                if (error instanceof TitanBotError) {
+                if (error instanceof HiosBotError) {
                     logger.debug(`Configuration validation error: ${error.message}`, error.context || {});
                 } else {
                     logger.error('Unexpected configuration menu error:', error);
                 }
                 
-                const errorMessage = error instanceof TitanBotError 
+                const errorMessage = error instanceof HiosBotError 
                     ? error.userMessage || 'An error occurred while processing your selection.'
                     : 'An error occurred while processing your selection.';
                     
@@ -155,11 +155,11 @@ time: 60000
             }
         });
             } catch (error) {
-            if (error instanceof TitanBotError) {
+            if (error instanceof HiosBotError) {
                 throw error;
             }
             logger.error('Unexpected error in config_setup:', error);
-            throw new TitanBotError(
+            throw new HiosBotError(
                 `Config setup failed: ${error.message}`,
                 ErrorTypes.UNKNOWN,
                 'Failed to configure Join to Create system.'
@@ -224,13 +224,13 @@ time: 600_000,
 
             await message.delete().catch(() => {});
         } catch (error) {
-            if (error instanceof TitanBotError) {
+            if (error instanceof HiosBotError) {
                 logger.debug(`Template validation error: ${error.message}`);
             } else {
                 logger.error('Template update error:', error);
             }
             
-            const errorMessage = error instanceof TitanBotError
+            const errorMessage = error instanceof HiosBotError
                 ? error.userMessage || 'Could not update the channel name template.'
                 : 'Could not update the channel name template.';
                 
@@ -302,13 +302,13 @@ async function handleUserLimitChange(interaction, triggerChannel, currentConfig,
 
             await message.delete().catch(() => {});
         } catch (error) {
-            if (error instanceof TitanBotError) {
+            if (error instanceof HiosBotError) {
                 logger.debug(`User limit validation error: ${error.message}`);
             } else {
                 logger.error('User limit update error:', error);
             }
             
-            const errorMessage = error instanceof TitanBotError
+            const errorMessage = error instanceof HiosBotError
                 ? error.userMessage || 'Could not update the user limit.'
                 : 'Could not update the user limit.';
                 
@@ -385,13 +385,13 @@ async function handleBitrateChange(interaction, triggerChannel, currentConfig, c
 
             await message.delete().catch(() => {});
         } catch (error) {
-            if (error instanceof TitanBotError) {
+            if (error instanceof HiosBotError) {
                 logger.debug(`Bitrate validation error: ${error.message}`);
             } else {
                 logger.error('Bitrate update error:', error);
             }
             
-            const errorMessage = error instanceof TitanBotError
+            const errorMessage = error instanceof HiosBotError
                 ? error.userMessage || 'Could not update the bitrate.'
                 : 'Could not update the bitrate.';
                 
@@ -463,13 +463,13 @@ async function handleRemoveTrigger(interaction, triggerChannel, currentConfig, c
                     });
                 }
             } catch (error) {
-                if (error instanceof TitanBotError) {
+                if (error instanceof HiosBotError) {
                     logger.debug(`Trigger removal validation error: ${error.message}`);
                 } else {
                     logger.error('Remove trigger error:', error);
                 }
                 
-                const errorMessage = error instanceof TitanBotError
+                const errorMessage = error instanceof HiosBotError
                     ? error.userMessage || 'An error occurred while removing the trigger channel.'
                     : 'An error occurred while removing the trigger channel.';
                     

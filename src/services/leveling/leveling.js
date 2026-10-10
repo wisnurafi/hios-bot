@@ -3,7 +3,7 @@
 import { EmbedBuilder } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { getGuildConfig, setGuildConfig } from '../config/guildConfig.js';
-import { TitanBotError, ErrorTypes } from '../../utils/errorHandler.js';
+import { HiosBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { addXp } from './xpSystem.js';
 import { getUserLevelKey } from '../../utils/database/keys.js';
 
@@ -14,7 +14,7 @@ const MIN_LEVEL = 0;
 
 export function getXpForLevel(level) {
   if (!Number.isInteger(level) || level < 0 || level > MAX_LEVEL) {
-    throw new TitanBotError(
+    throw new HiosBotError(
       `Invalid level: ${level}. Must be between ${MIN_LEVEL} and ${MAX_LEVEL}`,
       ErrorTypes.VALIDATION,
       'The level must be a valid number.'
@@ -25,7 +25,7 @@ export function getXpForLevel(level) {
 
 export function getLevelFromXp(xp) {
   if (!Number.isInteger(xp) || xp < 0) {
-    throw new TitanBotError(
+    throw new HiosBotError(
       `Invalid XP: ${xp}`,
       ErrorTypes.VALIDATION,
       'XP must be a non-negative number.'
@@ -60,7 +60,7 @@ export async function getLeaderboard(client, guildId, limit = 10) {
   try {
     
     if (!guildId || typeof guildId !== 'string') {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Invalid guild ID',
         ErrorTypes.VALIDATION,
         'Guild ID is required.'
@@ -108,8 +108,8 @@ export async function getLeaderboard(client, guildId, limit = 10) {
     
   } catch (error) {
     logger.error('Error getting leaderboard:', error);
-    if (error instanceof TitanBotError) throw error;
-    throw new TitanBotError(
+    if (error instanceof HiosBotError) throw error;
+    throw new HiosBotError(
       `Failed to fetch leaderboard: ${error.message}`,
       ErrorTypes.DATABASE,
       'Could not fetch the leaderboard at this time.'
@@ -196,7 +196,7 @@ export function normalizeRewardRoles(value) {
 export async function getUserLevelData(client, guildId, userId) {
   try {
     if (!guildId || !userId) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Guild ID and User ID are required',
         ErrorTypes.VALIDATION
       );
@@ -224,8 +224,8 @@ export async function getUserLevelData(client, guildId, userId) {
     };
   } catch (error) {
     logger.error(`Error getting user level data for ${userId}:`, error);
-    if (error instanceof TitanBotError) throw error;
-    throw new TitanBotError(
+    if (error instanceof HiosBotError) throw error;
+    throw new HiosBotError(
       `Failed to fetch user data: ${error.message}`,
       ErrorTypes.DATABASE,
       'Could not fetch level data at this time.'
@@ -236,14 +236,14 @@ export async function getUserLevelData(client, guildId, userId) {
 export async function saveUserLevelData(client, guildId, userId, data) {
   try {
     if (!guildId || !userId) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Guild ID and User ID are required',
         ErrorTypes.VALIDATION
       );
     }
 
     if (!data || typeof data !== 'object') {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Invalid user level data',
         ErrorTypes.VALIDATION
       );
@@ -261,8 +261,8 @@ export async function saveUserLevelData(client, guildId, userId, data) {
     await client.db.set(key, sanitizedData);
   } catch (error) {
     logger.error(`Error saving user level data for ${userId}:`, error);
-    if (error instanceof TitanBotError) throw error;
-    throw new TitanBotError(
+    if (error instanceof HiosBotError) throw error;
+    throw new HiosBotError(
       `Failed to save user data: ${error.message}`,
       ErrorTypes.DATABASE,
       'Could not save level data at this time.'
@@ -273,7 +273,7 @@ export async function saveUserLevelData(client, guildId, userId, data) {
 export async function saveLevelingConfig(client, guildId, config) {
   try {
     if (!guildId || !config) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Guild ID and config are required',
         ErrorTypes.VALIDATION
       );
@@ -282,7 +282,7 @@ export async function saveLevelingConfig(client, guildId, config) {
     const guildConfig = await getGuildConfig(client, guildId);
 
     if (config.xpCooldown && (config.xpCooldown < 0 || config.xpCooldown > 3600)) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'XP cooldown must be between 0 and 3600 seconds',
         ErrorTypes.VALIDATION,
         'Cooldown must be between 0 and 3600 seconds.'
@@ -290,7 +290,7 @@ export async function saveLevelingConfig(client, guildId, config) {
     }
 
     if (config.xpRange && (config.xpRange.min < 1 || config.xpRange.max < 1 || config.xpRange.min > config.xpRange.max)) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Invalid XP range configuration',
         ErrorTypes.VALIDATION,
         'Minimum XP must be less than maximum XP, and both must be positive.'
@@ -303,8 +303,8 @@ export async function saveLevelingConfig(client, guildId, config) {
     logger.info(`Leveling config updated for guild ${guildId}`);
   } catch (error) {
     logger.error(`Error saving leveling config for guild ${guildId}:`, error);
-    if (error instanceof TitanBotError) throw error;
-    throw new TitanBotError(
+    if (error instanceof HiosBotError) throw error;
+    throw new HiosBotError(
       `Failed to save config: ${error.message}`,
       ErrorTypes.DATABASE,
       'Could not save configuration at this time.'
@@ -316,7 +316,7 @@ export async function addLevels(client, guildId, userId, levels) {
   try {
     const levelingConfig = await getLevelingConfig(client, guildId);
     if (!levelingConfig?.enabled) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Leveling system is disabled on this server',
         ErrorTypes.CONFIGURATION,
         'The leveling system is currently disabled on this server.'
@@ -324,7 +324,7 @@ export async function addLevels(client, guildId, userId, levels) {
     }
 
     if (!Number.isInteger(levels) || levels <= 0) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         `Invalid level amount: ${levels}`,
         ErrorTypes.VALIDATION,
         'You must add a positive number of levels.'
@@ -335,7 +335,7 @@ export async function addLevels(client, guildId, userId, levels) {
     const newLevel = userData.level + levels;
 
     if (newLevel > MAX_LEVEL) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         `Level ${newLevel} exceeds maximum level ${MAX_LEVEL}`,
         ErrorTypes.VALIDATION,
         `Maximum level is ${MAX_LEVEL}.`
@@ -355,8 +355,8 @@ export async function addLevels(client, guildId, userId, levels) {
     return userData;
   } catch (error) {
     logger.error(`Error adding levels for user ${userId}:`, error);
-    if (error instanceof TitanBotError) throw error;
-    throw new TitanBotError(
+    if (error instanceof HiosBotError) throw error;
+    throw new HiosBotError(
       `Failed to add levels: ${error.message}`,
       ErrorTypes.DATABASE,
       'Could not add levels at this time.'
@@ -368,7 +368,7 @@ export async function removeLevels(client, guildId, userId, levels) {
   try {
     const levelingConfig = await getLevelingConfig(client, guildId);
     if (!levelingConfig?.enabled) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Leveling system is disabled on this server',
         ErrorTypes.CONFIGURATION,
         'The leveling system is currently disabled on this server.'
@@ -376,7 +376,7 @@ export async function removeLevels(client, guildId, userId, levels) {
     }
 
     if (!Number.isInteger(levels) || levels <= 0) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         `Invalid level amount: ${levels}`,
         ErrorTypes.VALIDATION,
         'You must remove a positive number of levels.'
@@ -399,8 +399,8 @@ export async function removeLevels(client, guildId, userId, levels) {
     return userData;
   } catch (error) {
     logger.error(`Error removing levels for user ${userId}:`, error);
-    if (error instanceof TitanBotError) throw error;
-    throw new TitanBotError(
+    if (error instanceof HiosBotError) throw error;
+    throw new HiosBotError(
       `Failed to remove levels: ${error.message}`,
       ErrorTypes.DATABASE,
       'Could not remove levels at this time.'
@@ -412,7 +412,7 @@ export async function setUserLevel(client, guildId, userId, level) {
   try {
     const levelingConfig = await getLevelingConfig(client, guildId);
     if (!levelingConfig?.enabled) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Leveling system is disabled on this server',
         ErrorTypes.CONFIGURATION,
         'The leveling system is currently disabled on this server.'
@@ -420,7 +420,7 @@ export async function setUserLevel(client, guildId, userId, level) {
     }
 
     if (!Number.isInteger(level) || level < MIN_LEVEL || level > MAX_LEVEL) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         `Invalid level: ${level}`,
         ErrorTypes.VALIDATION,
         `Level must be between ${MIN_LEVEL} and ${MAX_LEVEL}.`
@@ -442,8 +442,8 @@ export async function setUserLevel(client, guildId, userId, level) {
     return userData;
   } catch (error) {
     logger.error(`Error setting level for user ${userId}:`, error);
-    if (error instanceof TitanBotError) throw error;
-    throw new TitanBotError(
+    if (error instanceof HiosBotError) throw error;
+    throw new HiosBotError(
       `Failed to set level: ${error.message}`,
       ErrorTypes.DATABASE,
       'Could not set level at this time.'
@@ -454,7 +454,7 @@ export async function setUserLevel(client, guildId, userId, level) {
 export async function deleteUserLevelData(client, guildId, userId) {
   try {
     if (!guildId || !userId) {
-      throw new TitanBotError(
+      throw new HiosBotError(
         'Guild ID and User ID are required',
         ErrorTypes.VALIDATION
       );
@@ -466,7 +466,7 @@ export async function deleteUserLevelData(client, guildId, userId) {
     logger.debug(`Deleted level data for user ${userId} in guild ${guildId}`);
   } catch (error) {
     logger.error(`Error deleting level data for user ${userId}:`, error);
-    if (error instanceof TitanBotError) throw error;
+    if (error instanceof HiosBotError) throw error;
     logger.warn(`Could not delete level data for user ${userId} in guild ${guildId}`);
   }
 }

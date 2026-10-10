@@ -6,7 +6,7 @@
  *     data: new SlashCommandBuilder()...,
  *     category: 'economy',
  *     async execute(interaction, config, client) {
- *       // throw TitanBotError / createError on failure
+ *       // throw HiosBotError / createError on failure
  *       // use replyUserError for early validation returns
  *       // do NOT wrap in try/catch — interactionCreate handles errors
  *     },

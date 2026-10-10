@@ -19,7 +19,7 @@ import {
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
 import { successEmbed, errorEmbed } from '../../../utils/embeds.js';
 import { logger } from '../../../utils/logger.js';
-import { TitanBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
+import { HiosBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
 import { getLevelingConfig, saveLevelingConfig, normalizeRewardRoles } from '../../../services/leveling/leveling.js';
 import { sendLevelUpPreview } from '../../../services/leveling/xpSystem.js';
 import { botHasPermission } from '../../../utils/permissionGuard.js';
@@ -161,7 +161,7 @@ export default {
             const cfg = await getLevelingConfig(client, guildId);
 
             if (!cfg.configured) {
-                throw new TitanBotError(
+                throw new HiosBotError(
                     'Leveling system not configured',
                     ErrorTypes.CONFIGURATION,
                     'The leveling system has not been set up yet. Run `/level setup` first to configure it.',
@@ -276,9 +276,9 @@ export default {
                 },
             });
         } catch (error) {
-            if (error instanceof TitanBotError) throw error;
+            if (error instanceof HiosBotError) throw error;
             logger.error('Unexpected error in level_dashboard:', error);
-            throw new TitanBotError(
+            throw new HiosBotError(
                 `Level dashboard failed: ${error.message}`,
                 ErrorTypes.UNKNOWN,
                 'Failed to open the leveling dashboard.',

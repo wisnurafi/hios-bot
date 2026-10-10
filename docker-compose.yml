@@ -1,7 +1,7 @@
 services:
   bot:
     build: .
-    container_name: titanbot
+    container_name: hios-bot
     restart: unless-stopped
     env_file:
       - .env
@@ -38,7 +38,7 @@ services:
 
   db:
     image: postgres:15-alpine
-    container_name: titanbot-db
+    container_name: hios-bot-db
     restart: unless-stopped
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-titanbot}

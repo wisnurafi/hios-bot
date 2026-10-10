@@ -1,5 +1,5 @@
 {
-  "name": "titanbot",
+  "name": "hios-bot",
   "version": "2.1.0",
   "description": "Modular Ultimate Community Bot by Touchpoint Support",
   "main": "src/app.js",

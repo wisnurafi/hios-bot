@@ -1,6 +1,6 @@
-# Contributing to TitanBot
+# Contributing to hios-bot
 
-Thank you for your interest in contributing to TitanBot! This guide covers local setup, project conventions, and what we look for in pull requests.
+Thank you for your interest in contributing to hios-bot! This guide covers local setup, project conventions, and what we look for in pull requests.
 
 ## Ways to Contribute
 
@@ -55,7 +55,7 @@ Use descriptive branch names, for example:
 
 ## Database & Migrations
 
-TitanBot uses PostgreSQL as its primary store. If PostgreSQL is unreachable at startup, the bot can operate in a **degraded in-memory mode** — but that mode is not suitable for production and should not be the only way you test persistence-related changes.
+hios-bot uses PostgreSQL as its primary store. If PostgreSQL is unreachable at startup, the bot can operate in a **degraded in-memory mode** — but that mode is not suitable for production and should not be the only way you test persistence-related changes.
 
 Useful commands:
 
