@@ -1,11 +1,21 @@
 // logger.js
+// Mini logger zero-dependency (pengganti winston + winston-daily-rotate-file).
+//
+// Kenapa diganti: dependency tree winston + file I/O tiap baris log ke disk
+// ephemeral itu keberatan buat free tier Wispbyte. Semua log sekarang ke
+// stdout/stderr (kebaca dari log viewer Wispbyte).
+//
+// API tetap sama: logger.error/warn/info/debug(message, meta?),
+// startupLog, shutdownLog, plus helper trace context di bawah.
+// Level: error < warn < info < debug via LOG_LEVEL env (default: info di
+// production, debug selain itu). Timestamp WIB. warn/error ke stderr.
 
-import winston from 'winston';
-import 'winston-daily-rotate-file';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { AsyncLocalStorage } from 'async_hooks';
 import crypto from 'crypto';
+
+// ---------------------------------------------------------------------------
+// Trace context (AsyncLocalStorage bawaan Node — tidak terkait winston)
+// ---------------------------------------------------------------------------
 
 const traceStorage = new AsyncLocalStorage();
 
@@ -50,13 +60,16 @@ export function getTraceId() {
   return getTraceContext()?.traceId || null;
 }
 
-const { createLogger, format, transports } = winston;
-const { combine, timestamp, printf, colorize, errors, json } = format;
+// ---------------------------------------------------------------------------
+// Level & format
+// ---------------------------------------------------------------------------
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const validLogLevels = new Set(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']);
+const SERVICE = 'hios-bot';
+
+const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
+
 const defaultLogLevel = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
+
 const logLevelAliases = {
   warning: 'warn',
   warnings: 'warn',
@@ -64,18 +77,25 @@ const logLevelAliases = {
   err: 'error',
   information: 'info',
 };
+
 const rawRequestedLogLevel = process.env.LOG_LEVEL?.toLowerCase().trim();
 const requestedLogLevel = logLevelAliases[rawRequestedLogLevel] || rawRequestedLogLevel;
 
-const resolvedLogLevel = validLogLevels.has(requestedLogLevel)
+const resolvedLogLevel = LEVELS[requestedLogLevel] !== undefined
   ? requestedLogLevel
   : defaultLogLevel;
 
-const pendingInvalidLevelWarning = requestedLogLevel && !validLogLevels.has(requestedLogLevel)
-  ? `[logger] Invalid LOG_LEVEL "${process.env.LOG_LEVEL}". Falling back to "${defaultLogLevel}".`
-  : null;
-
 const shouldPromoteUserFacingLogs = process.env.NODE_ENV === 'production' && resolvedLogLevel === 'warn';
+
+const WIB_OFFSET_MS = 7 * 3600 * 1000;
+
+function timestamp() {
+  return new Date(Date.now() + WIB_OFFSET_MS).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+// ---------------------------------------------------------------------------
+// Skema log (dipertahankan dari logger winston lama)
+// ---------------------------------------------------------------------------
 
 const LOG_SCHEMA_DEFAULTS = Object.freeze({
   event: 'application.log',
@@ -86,181 +106,162 @@ const LOG_SCHEMA_DEFAULTS = Object.freeze({
   traceId: null,
 });
 
-const logFormat = printf(({ level, message, timestamp, stack, displayLevel }) => {
-  const visibleLevel = displayLevel || level;
-  const logMessage = `[${timestamp}] [${visibleLevel}]: ${stack || message}`;
-  return logMessage;
-});
-
-const attachTraceContext = format((info) => {
-  const traceContext = getTraceContext();
-  if (!traceContext) {
-    return info;
+function deriveErrorCode(meta) {
+  if (meta.errorCode) {
+    return meta.errorCode;
   }
 
-  info.traceId = info.traceId || traceContext.traceId;
-  info.guildId = info.guildId || traceContext.guildId;
-  info.userId = info.userId || traceContext.userId;
-  info.command = info.command || traceContext.command;
-  info.interactionId = info.interactionId || traceContext.interactionId;
-
-  return info;
-});
-
-function deriveErrorCode(info) {
-  if (info.errorCode) {
-    return info.errorCode;
+  if (typeof meta.code === 'string' || typeof meta.code === 'number') {
+    return String(meta.code);
   }
 
-  if (typeof info.code === 'string' || typeof info.code === 'number') {
-    return String(info.code);
+  if (typeof meta.type === 'string') {
+    return meta.type;
   }
 
-  if (typeof info.type === 'string') {
-    return info.type;
-  }
-
-  if (info.error && (typeof info.error.code === 'string' || typeof info.error.code === 'number')) {
-    return String(info.error.code);
+  const err = meta.error;
+  if (err && (typeof err.code === 'string' || typeof err.code === 'number')) {
+    return String(err.code);
   }
 
   return null;
 }
 
-function normalizeEvent(info) {
-  if (typeof info.event === 'string' && info.event.trim()) {
-    return info.event;
+function normalizeEvent(meta) {
+  if (typeof meta.event === 'string' && meta.event.trim()) {
+    return meta.event;
   }
 
-  const displayLevel = typeof info.displayLevel === 'string' ? info.displayLevel.toLowerCase().trim() : null;
-  if (displayLevel === 'startup') {
-    return 'system.startup';
+  return `log.${meta._level || 'info'}`;
+}
+
+function attachTraceContext(meta) {
+  const traceContext = getTraceContext();
+  if (!traceContext) {
+    return meta;
   }
 
-  if (displayLevel === 'status') {
-    return 'system.status';
+  meta.traceId = meta.traceId || traceContext.traceId;
+  meta.guildId = meta.guildId || traceContext.guildId;
+  meta.userId = meta.userId || traceContext.userId;
+  meta.command = meta.command || traceContext.command;
+  meta.interactionId = meta.interactionId || traceContext.interactionId;
+
+  return meta;
+}
+
+function buildDetails(meta, level) {
+  meta._level = level;
+  attachTraceContext(meta);
+  const eventExplicit = typeof meta.event === 'string' && meta.event.trim();
+  const details = {
+    event: eventExplicit ? meta.event.trim() : normalizeEvent(meta),
+    guildId: meta.guildId ?? LOG_SCHEMA_DEFAULTS.guildId,
+    userId: meta.userId ?? LOG_SCHEMA_DEFAULTS.userId,
+    command: meta.command ?? LOG_SCHEMA_DEFAULTS.command,
+    errorCode: deriveErrorCode(meta),
+    traceId: meta.traceId ?? LOG_SCHEMA_DEFAULTS.traceId,
+  };
+  if (meta.interactionId) {
+    details.interactionId = meta.interactionId;
   }
-
-  return `log.${info.level || 'info'}`;
+  // Field meta lain yang tidak dikenal tetap ikut, biar tidak ada info hilang.
+  for (const [key, value] of Object.entries(meta)) {
+    if (key === '_level' || key in details) {
+      continue;
+    }
+    details[key] = value;
+  }
+  // Buang yang null supaya baris log ringkas.
+  for (const key of Object.keys(details)) {
+    if (details[key] === null || details[key] === undefined) {
+      delete details[key];
+    }
+  }
+  // Event auto-generated tanpa info lain = noise, buang.
+  if (!eventExplicit && Object.keys(details).length === 1 && details.event) {
+    delete details.event;
+  }
+  return details;
 }
 
-const enforceLogSchema = format((info) => {
-  info.event = normalizeEvent(info);
-  info.guildId = info.guildId ?? LOG_SCHEMA_DEFAULTS.guildId;
-  info.userId = info.userId ?? LOG_SCHEMA_DEFAULTS.userId;
-  info.command = info.command ?? LOG_SCHEMA_DEFAULTS.command;
-  info.traceId = info.traceId ?? LOG_SCHEMA_DEFAULTS.traceId;
-  info.errorCode = deriveErrorCode(info);
-  return info;
-});
-
-const logger = createLogger({
-  level: resolvedLogLevel,
-  format: combine(
-    attachTraceContext(),
-    enforceLogSchema(),
-    timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    errors({ stack: true }),
-    format.json()
-  ),
-  defaultMeta: { service: 'titan-bot' },
-  transports: [
-    new transports.DailyRotateFile({
-      filename: path.join(__dirname, '../../logs/error-%DATE%.log'),
-      level: 'error',
-      maxSize: '20m',
-      maxFiles: '14d',
-      zippedArchive: true,
-    }),
-    new transports.DailyRotateFile({
-      filename: path.join(__dirname, '../../logs/combined-%DATE%.log'),
-      maxSize: '20m',
-      maxFiles: '7d',
-      zippedArchive: true,
-    }),
-  ],
-  exceptionHandlers: [
-    new transports.DailyRotateFile({
-      filename: path.join(__dirname, '../../logs/exceptions-%DATE%.log'),
-      maxSize: '20m',
-      maxFiles: '14d',
-      zippedArchive: true,
-    }),
-  ],
-  rejectionHandlers: [
-    new transports.DailyRotateFile({
-      filename: path.join(__dirname, '../../logs/rejections-%DATE%.log'),
-      maxSize: '20m',
-      maxFiles: '14d',
-      zippedArchive: true,
-    }),
-  ],
-});
-
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new transports.Console({
-    format: combine(
-      colorize(),
-      timestamp({ format: 'HH:mm:ss' }),
-      errors({ stack: true }),
-      logFormat
-    ),
-    level: resolvedLogLevel,
-  }));
-} else {
-  logger.add(new transports.Console({
-    format: combine(
-      colorize(),
-      timestamp({ format: 'HH:mm:ss' }),
-      errors({ stack: true }),
-      logFormat
-    ),
-    level: resolvedLogLevel,
-  }));
+function stringifyDetails(details) {
+  if (Object.keys(details).length === 0) {
+    return '';
+  }
+  const json = JSON.stringify(details, (_key, value) =>
+    value instanceof Error ? { message: value.message, stack: value.stack } : value
+  );
+  return ` ${json}`;
 }
 
-logger.stream = {
-  write: (message) => {
-    logger.info(message.trim());
-  },
-};
-
-if (pendingInvalidLevelWarning) {
-  logger.warn(pendingInvalidLevelWarning);
-}
-
-function startupLog(message) {
-  if (shouldPromoteUserFacingLogs) {
-    logger.log({
-      level: 'warn',
-      message,
-      displayLevel: 'startup',
-    });
+function write(level, displayLevel, message, meta, extraArgs) {
+  if (LEVELS[level] > LEVELS[resolvedLogLevel]) {
     return;
   }
+  const label = displayLevel || level.toUpperCase();
+  const prefix = `[${timestamp()}] [${SERVICE}] [${label}]`;
+  const details = stringifyDetails(buildDetails(meta, level));
+  const out = level === 'error' || level === 'warn' ? console.error : console.log;
+  out(`${prefix} ${message}${details}`, ...extraArgs);
+}
 
-  logger.log({
-    level: 'info',
-    message,
-    displayLevel: 'startup',
-  });
+function make(level) {
+  return (message, metaOrError, ...rest) => {
+    let meta = {};
+    const extraArgs = [];
+    if (metaOrError instanceof Error) {
+      // logger.error('msg', err) — cetak stack seperti errors({stack:true}) dulu.
+      extraArgs.push(metaOrError.stack || metaOrError.message);
+      meta = { errorCode: deriveErrorCode({ error: metaOrError }) };
+    } else if (metaOrError && typeof metaOrError === 'object') {
+      meta = { ...metaOrError };
+    } else if (metaOrError !== undefined) {
+      extraArgs.push(metaOrError);
+    }
+    write(level, null, message, meta, [...extraArgs, ...rest]);
+  };
+}
+
+const logger = {
+  error: make('error'),
+  warn: make('warn'),
+  info: make('info'),
+  debug: make('debug'),
+  level: resolvedLogLevel,
+};
+
+// logger.stream (morgan) sudah tidak dipakai di mana pun — dibuang.
+
+// ---------------------------------------------------------------------------
+// Startup / status log (dipakai di app.js & events/ready.js)
+// ---------------------------------------------------------------------------
+
+function startupLog(message) {
+  const level = shouldPromoteUserFacingLogs ? 'warn' : 'info';
+  if (LEVELS[level] > LEVELS[resolvedLogLevel]) {
+    return;
+  }
+  const out = level === 'warn' ? console.error : console.log;
+  out(`[${timestamp()}] [${SERVICE}] [STARTUP] ${message}`);
 }
 
 function shutdownLog(message) {
-  if (shouldPromoteUserFacingLogs) {
-    logger.log({
-      level: 'warn',
-      message,
-      displayLevel: 'status',
-    });
+  const level = shouldPromoteUserFacingLogs ? 'warn' : 'info';
+  if (LEVELS[level] > LEVELS[resolvedLogLevel]) {
     return;
   }
+  const out = level === 'warn' ? console.error : console.log;
+  out(`[${timestamp()}] [${SERVICE}] [STATUS] ${message}`);
+}
 
-  logger.log({
-    level: 'info',
-    message,
-    displayLevel: 'status',
-  });
+const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+if (rawRequestedLogLevel && !hasOwn(logLevelAliases, rawRequestedLogLevel) && !hasOwn(LEVELS, rawRequestedLogLevel)) {
+  // Selalu tampil walau level diset ke error.
+  console.error(
+    `[${timestamp()}] [${SERVICE}] [WARN] Invalid LOG_LEVEL "${process.env.LOG_LEVEL}". Falling back to "${defaultLogLevel}".`
+  );
 }
 
 export { logger, startupLog, shutdownLog };
