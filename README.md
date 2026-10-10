@@ -1,6 +1,8 @@
-# TitanBot - Ultimate Discord Bot
+# hios-bot
 
-**TitanBot** is a Discord bot focused on server management essentials: moderation, TempVoice rooms, tickets, verification, leveling, reaction roles, server stats, logging, and welcome automation. Built with modern Discord.js v14 and PostgreSQL for optimal performance and data persistence.
+**hios-bot** is a Discord bot focused on server management essentials: moderation, TempVoice rooms, tickets, verification, leveling, reaction roles, server stats, logging, and welcome automation. Built with modern Discord.js v14 and PostgreSQL for optimal performance and data persistence.
+
+> Forked from [TitanBot](https://github.com/codebymitch/TitanBot) by codebymitch, then trimmed and customized to fit this server's needs — unused modules (economy, music, giveaways, birthday, fun games, tools, utility, community applications, search) were removed.
 
 [![Support Server](https://img.shields.io/badge/-Support%20Server-%235865F2?logo=discord&logoColor=white&style=flat-square&logoWidth=20)](https://discord.gg/8kJBYhTGW9)
 [![Discord.js](https://img.shields.io/npm/v/discord.js?style=flat-square&labelColor=%23202225&color=%23202225&logo=npm&logoColor=white&logoWidth=20)](https://www.npmjs.com/package/discord.js)
@@ -18,7 +20,7 @@
 <a name="features-overview"></a>
 ## Features Overview
 
-TitanBot offers a complete suite of tools for Discord server management and community engagement:
+hios-bot offers a focused set of tools for Discord server management:
 
 <table>
 <tr>
@@ -77,17 +79,17 @@ TitanBot offers a complete suite of tools for Discord server management and comm
 ## Quick Setup (Recommended for non-coders)
 
 ### Video Tutorial
-For a detailed step-by-step setup guide, watch our comprehensive video tutorial:
+For a detailed step-by-step setup guide (based on the original TitanBot this was forked from), watch:
 [**TitanBot Setup Tutorial**](https://www.youtube.com/@TouchDisc)
 
 ## Docker Deployment (Recommended)
 
-TitanBot is fully containerized for easy deployment.
+hios-bot is fully containerized for easy deployment.
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/codebymitch/TitanBot.git
-   cd TitanBot
+   git clone https://github.com/wisnurafi/hios-bot.git
+   cd hios-bot
    ```
 
 2. **Configure environment variables:**
@@ -114,7 +116,7 @@ This starts the bot and PostgreSQL. The compose file sets `POSTGRES_SSL=false` a
 The bot is automatically published to GitHub Container Registry on every push to main.
 
 ```bash
-docker pull ghcr.io/codebymitch/titanbot:main
+docker pull ghcr.io/wisnurafi/hios-bot:main
 ```
 
 <a name="manual-installation-steps"></a>
@@ -127,8 +129,8 @@ docker pull ghcr.io/codebymitch/titanbot:main
 
 1. **Clone the Repository**
    ```bash
-   git clone https://github.com/codebymitch/TitanBot.git
-   cd TitanBot
+   git clone https://github.com/wisnurafi/hios-bot.git
+   cd hios-bot
    ```
 
 2. **Install Dependencies**
@@ -160,7 +162,7 @@ docker pull ghcr.io/codebymitch/titanbot:main
    - `NODE_ENV=production`
    - `LOG_LEVEL=warn` for a clean production console (critical issues + startup status)
    - `LOG_LEVEL=info` if you want more detailed operational logs
-   - If your chosen `PORT` is already used, TitanBot automatically tries the next port(s)
+   - If your chosen `PORT` is already used, hios-bot automatically tries the next port(s)
 
    Environment options reference:
    - `NODE_ENV`: `development`, `production`, `test` (any non-`production` value is treated as non-production)
@@ -215,7 +217,7 @@ Notes:
 <a name="bot-intents"></a>
 
 ## Required Bot Intents
-TitanBot requires the following Discord intents:
+hios-bot requires the following Discord intents:
 - **Guilds**
 - **Guild Messages**
 - **Message Content**
@@ -243,10 +245,10 @@ TitanBot requires the following Discord intents:
 
 ## License
 
-TitanBot is released under the MIT License. See [LICENSE](LICENSE) for details.
+hios-bot is released under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## Thank You
 
-Thank you for choosing TitanBot for your Discord server! We're constantly working to improve and add new features based on community feedback.
+Thank you for checking out hios-bot!
 
 *Last updated: May 2026*
