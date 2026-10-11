@@ -60,6 +60,14 @@ export function getUserLevelPrefix(guildId) {
     return `guild:${guildId}:leveling:users:`;
 }
 
+export function getPeriodXpKey(guildId, periodId, userId) {
+    return `guild:${guildId}:leveling:period:${periodId}:${userId}`;
+}
+
+export function getPeriodXpPrefix(guildId, periodId) {
+    return `guild:${guildId}:leveling:period:${periodId}:`;
+}
+
 export function getApplicationRolesKey(guildId) {
     return `guild:${guildId}:applications:roles`;
 }

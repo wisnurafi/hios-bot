@@ -8,6 +8,7 @@ import config from './config/application.js';
 import { initializeDatabase } from './utils/database.js';
 import { getGuildConfig } from './services/config/guildConfig.js';
 import { getServerCounters, saveServerCounters, updateCounter } from './services/serverstatsService.js';
+import { checkScheduledLeaderboards } from './services/leveling/scheduledLeaderboard.js';
 import { logger, startupLog, shutdownLog } from './utils/logger.js';
 import { loadCommands, registerCommands as registerSlashCommands } from './handlers/loaders/commandLoader.js';
 import { runSafeTask, handleTaskError, ErrorCodes } from './utils/errorHandler.js';
@@ -243,6 +244,9 @@ class HiosBot extends Client {
 
   setupCronJobs() {
     cron.schedule('*/15 * * * *', runSafeTask('counter_update', () => this.updateAllCounters()));
+    // Biweekly leaderboard: cheap hourly tick, each guild posts only when its
+    // persisted nextRunAt is due (survives restarts via catch-up).
+    cron.schedule('0 * * * *', runSafeTask('scheduled_leaderboard', () => checkScheduledLeaderboards(this)));
   }
 
   async updateAllCounters() {

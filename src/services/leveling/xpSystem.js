@@ -3,6 +3,7 @@
 import { EmbedBuilder } from 'discord.js';
 import { logger } from '../../utils/logger.js';
 import { getLevelingConfig, getXpForLevel, getUserLevelData, saveUserLevelData, normalizeRewardRoles } from './leveling.js';
+import { addPeriodXp } from './periodTracker.js';
 import { logEvent, EVENT_TYPES } from '../loggingService.js';
 import { formatLogLine } from '../../utils/logging/logEmbeds.js';
 import { Mutex } from '../../utils/mutex.js';
@@ -77,6 +78,14 @@ export const addXp = wrapServiceBoundary(async function addXp(client, guild, mem
     }
 
     await saveUserLevelData(client, guild.id, member.user.id, levelData);
+
+    // Biweekly leaderboard tracking — best-effort, never breaks the XP flow.
+    // addPeriodXp swallows its own errors; the enabled/periodId gate keeps
+    // disabled guilds at zero extra cost.
+    const schedLb = config.scheduledLeaderboard;
+    if (schedLb?.enabled && schedLb?.periodId) {
+        await addPeriodXp(client, guild.id, member.user.id, schedLb.periodId, xpToAdd);
+    }
 
     return {
       level: levelData.level,
