@@ -280,7 +280,7 @@ async function handleChannel(selectInteraction, rootInteraction, cfg, guildId, c
         .setPlaceholder('Select a text channel...')
         .setMinValues(1)
         .setMaxValues(1)
-        .addChannelTypes(ChannelType.GuildText)
+        .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
         .setRequired(true);
 
     const channelLabel = new LabelBuilder()
