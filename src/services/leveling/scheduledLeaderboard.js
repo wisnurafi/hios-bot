@@ -96,7 +96,13 @@ async function resolveMemberLabel(guild, userId, { mention }) {
 /**
  * Build the biweekly embed. periodTop: [{ userId, xp }], allTimeTop: rows
  * from getLeaderboard().
+ *
+ * One embed, two clearly separated sections. Only the top 3 of EACH board
+ * are mentioned (when mentionTop3 is on); everyone else renders as plain
+ * display names so nobody gets ping-spammed.
  */
+const SECTION_DIVIDER = '────────────────────';
+
 export async function buildScheduledLeaderboardEmbed(guild, { periodTop, allTimeTop, periodStart, periodEnd, mentionTop3 }) {
     const periodLines = [];
     for (let i = 0; i < periodTop.length; i++) {
@@ -108,10 +114,9 @@ export async function buildScheduledLeaderboardEmbed(guild, { periodTop, allTime
     const allTimeLines = [];
     for (let i = 0; i < allTimeTop.length; i++) {
         const u = allTimeTop[i];
-        const member = await guild.members.fetch(u.userId).catch(() => null);
-        const label = member ? member.user.toString() : `<@${u.userId}>`;
+        const label = await resolveMemberLabel(guild, u.userId, { mention: mentionTop3 && i < 3 });
         const xpForNext = getXpForLevel(u.level + 1);
-        allTimeLines.push(`${rankPrefix(i)} ${label} - Level ${u.level} (${fmtNum(u.xp)}/${fmtNum(xpForNext)} XP)`);
+        allTimeLines.push(`${rankPrefix(i)} ${label} — Level ${u.level} (${fmtNum(u.xp)}/${fmtNum(xpForNext)} XP)`);
     }
 
     const embed = new EmbedBuilder()
@@ -126,6 +131,7 @@ export async function buildScheduledLeaderboardEmbed(guild, { periodTop, allTime
                 name: 'Last 2 Weeks — Top 15',
                 value: periodLines.length > 0 ? periodLines.join('\n') : '_No activity this period — be the first!_',
             },
+            { name: '\u200b', value: SECTION_DIVIDER },
             {
                 name: 'All Time — Top 5',
                 value: allTimeLines.length > 0 ? allTimeLines.join('\n') : '_No level data yet._',
