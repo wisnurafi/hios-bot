@@ -337,13 +337,15 @@ async function handleDay(selectInteraction, rootInteraction, cfg, guildId, clien
             )
         );
 
-    await selectInteraction.reply({
+    const dayMsg = await selectInteraction.reply({
         content: 'Pick the weekday the leaderboard is posted (every 2 weeks):',
         components: [new ActionRowBuilder().addComponents(daySelect)],
         flags: MessageFlags.Ephemeral,
+        fetchReply: true,
     });
 
-    const picked = await selectInteraction
+    // NOTE: awaitMessageComponent only exists on Message, not on interactions.
+    const picked = await dayMsg
         .awaitMessageComponent({
             filter: (i) => i.customId === `lbsched_day_pick_${guildId}` && i.user.id === selectInteraction.user.id,
             componentType: ComponentType.StringSelect,

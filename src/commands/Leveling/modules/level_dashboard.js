@@ -431,13 +431,15 @@ async function handleRoleRewardRemove(selectInteraction, rootInteraction, cfg, g
                 }),
             );
 
-        await submitted.reply({
+        const pickMsg = await submitted.reply({
             content: `Level **${level}** has multiple reward roles. Select one to remove:`,
             components: [new ActionRowBuilder().addComponents(select)],
             flags: MessageFlags.Ephemeral,
+            fetchReply: true,
         });
 
-        const picked = await submitted
+        // NOTE: awaitMessageComponent only exists on Message, not on interactions.
+        const picked = await pickMsg
             .awaitMessageComponent({
                 filter: (i) =>
                     i.customId === `level_cfg_role_reward_remove_pick_${guildId}` &&
