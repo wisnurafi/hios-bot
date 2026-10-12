@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  MessageFlags,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
@@ -302,7 +303,7 @@ export async function handleDashboardComponent(interaction, client) {
   if (guildId !== interaction.guildId) {
     return interaction.reply({
       content: 'This dashboard belongs to another server.',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 

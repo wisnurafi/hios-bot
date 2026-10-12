@@ -53,7 +53,7 @@ export default {
       if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
         return interaction.reply({
           content: '❌ You need **Manage Server** permissions to use this.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
 
@@ -109,7 +109,7 @@ async function handleBackToMain(interaction) {
 async function handleToggle(interaction) {
   const eventType = interaction.customId.replace('log_dash_toggle:', '');
   if (!eventType) {
-    return interaction.reply({ content: '❌ Invalid event type.', ephemeral: true });
+    return interaction.reply({ content: '❌ Invalid event type.', flags: MessageFlags.Ephemeral, });
   }
 
   const status = await getLoggingStatus(interaction.client, interaction.guildId);
@@ -139,7 +139,7 @@ async function handleToggle(interaction) {
 async function handleAddFilterModal(interaction) {
   const filterType = interaction.customId.replace('log_dash_add_filter:', '');
   if (filterType !== 'user' && filterType !== 'channel') {
-    return interaction.reply({ content: '❌ Invalid filter type.', ephemeral: true });
+    return interaction.reply({ content: '❌ Invalid filter type.', flags: MessageFlags.Ephemeral, });
   }
 
   const modalCustomId = `log_dash_filter_modal:add:${filterType}`;
@@ -377,7 +377,7 @@ export async function handleLoggingMenuSelect(interaction) {
   if (!interaction.member.permissions.has(PermissionFlagsBits.ManageGuild)) {
     return interaction.reply({
       content: '❌ You need **Manage Server** permissions to use this.',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
 
@@ -409,5 +409,5 @@ export async function handleLoggingMenuSelect(interaction) {
     return interaction.update({ embeds: [embed], components, content: null });
   }
 
-  return interaction.reply({ content: '❌ Unknown option.', ephemeral: true });
+  return interaction.reply({ content: '❌ Unknown option.', flags: MessageFlags.Ephemeral, });
 }

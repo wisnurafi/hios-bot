@@ -35,6 +35,17 @@ class HiosBot extends Client {
         // bans.cache usage anywhere; the only touch is guild.bans.fetch()
         // (REST), which does not need the intent.
       ],
+      // NOTE (2026-10-12): sweep cached messages older than 1h, every 30m.
+      // Members are intentionally NOT swept: leveling relies on
+      // guild.members.cache.get() (src/services/leveling/leveling.js) and the
+      // member cache is already bounded by guild size — sweeping it would
+      // only trade memory for extra fetch API calls.
+      sweepers: {
+        messages: {
+          interval: 1800,
+          lifetime: 3600,
+        },
+      },
     });
 
     this.config = config;
@@ -113,6 +124,19 @@ class HiosBot extends Client {
     const maxPortRetryAttempts = Number(process.env.PORT_RETRY_ATTEMPTS || 5);
     const host = process.env.WEB_HOST || '0.0.0.0';
     const corsOrigin = this.config.api?.cors?.origin || '*';
+
+    // Optional bearer protection for the health endpoints (2026-10-12).
+    // Unset = open (legacy behavior); set HEALTH_BEARER_TOKEN to require it.
+    const healthBearerToken = process.env.HEALTH_BEARER_TOKEN || '';
+    const checkHealthAuth = (req, res, next) => {
+      if (!healthBearerToken) {
+        return next();
+      }
+      if (req.headers.authorization === `Bearer ${healthBearerToken}`) {
+        return next();
+      }
+      return res.status(401).json({ error: 'Unauthorized' });
+    };
     
     app.use((req, res, next) => {
       const allowedOrigins = Array.isArray(corsOrigin) ? corsOrigin : [corsOrigin];
@@ -162,12 +186,12 @@ class HiosBot extends Client {
       next();
     });
 
-    app.get('/health', (req, res) => {
+    app.get('/health', checkHealthAuth, (req, res) => {
       const dbStatus = this.db?.getStatus?.() || { isDegraded: 'unknown' };
+      // NOTE (2026-10-12): uptime removed — no need to expose it publicly.
       const status = {
         status: 'healthy',
         timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
         database: {
           connected: dbStatus.connectionType !== 'none',
           degraded: dbStatus.isDegraded,
@@ -177,12 +201,12 @@ class HiosBot extends Client {
       res.status(200).json(status);
     });
 
-    app.get('/ready', (req, res) => {
+    app.get('/ready', checkHealthAuth, (req, res) => {
       const dbStatus = this.db?.getStatus?.() || { isDegraded: true, connectionType: 'none' };
       const isReady = this.isReady() && !dbStatus.isDegraded;
 
+      // NOTE (2026-10-12): guildCount removed — no need to expose it publicly.
       const metrics = {
-        guildCount: this.guilds?.cache?.size ?? 0,
         commandCount: this.commands?.size ?? 0,
         database: {
           mode: dbStatus.connectionType,

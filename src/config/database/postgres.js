@@ -46,7 +46,12 @@ const validatedTables = Object.fromEntries(
     ])
 );
 
-const DEFAULT_POSTGRES_URL = 'postgresql://localhost:5432/titanbot';
+// NOTE (2026-10-12): no password is embedded in any default here by design.
+// A self-hoster without env gets an empty password -> connection fails ->
+// the bot falls back to degraded in-memory mode (production validation
+// already requires POSTGRES_PASSWORD with a clear error). Never put a
+// real credential in source.
+const DEFAULT_POSTGRES_URL = 'postgresql://postgres@localhost:5432/titanbot';
 
 export function resolveSslConfig() {
     const sslEnv = process.env.POSTGRES_SSL?.toLowerCase();
@@ -97,7 +102,7 @@ export function resolvePostgresPoolConfig() {
         port: parseInt(process.env.POSTGRES_PORT) || 5432,
         database: process.env.POSTGRES_DB || 'titanbot',
         user: process.env.POSTGRES_USER || 'postgres',
-        password: (process.env.POSTGRES_PASSWORD || '').toString(),
+        password: process.env.POSTGRES_PASSWORD || '',
         ...sharedOptions,
     };
 }
@@ -111,7 +116,7 @@ export const pgConfig = {
         port: parseInt(process.env.POSTGRES_PORT) || 5432,
         database: process.env.POSTGRES_DB || 'titanbot',
         user: process.env.POSTGRES_USER || 'postgres',
-        password: (process.env.POSTGRES_PASSWORD || '').toString(),
+        password: process.env.POSTGRES_PASSWORD || '',
         ssl: resolveSslConfig(),
 
         max: parseInt(process.env.POSTGRES_MAX_CONNECTIONS) || 20,

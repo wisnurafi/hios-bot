@@ -158,7 +158,7 @@ docker pull ghcr.io/wisnurafi/hios-bot:main
    POSTGRES_PORT=5432
    POSTGRES_DB=titanbot
    POSTGRES_USER=postgres
-   POSTGRES_PASSWORD=yourpassword
+   POSTGRES_PASSWORD=
    ```
 
    Production note:

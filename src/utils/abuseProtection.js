@@ -39,6 +39,36 @@ const RISKY_COMMAND_NAMES = new Set([
 
 const blockedAttemptStore = new Map();
 
+// Bound the store: same pattern as rateLimiter.js — prune expired
+// entries (throttled) + hard cap with oldest-first eviction.
+const MAX_BLOCKED_ATTEMPT_ENTRIES = 10_000;
+const BLOCKED_ATTEMPT_PRUNE_INTERVAL_MS = 300_000;
+let lastBlockedPruneAt = 0;
+
+function pruneBlockedAttemptStore(now = Date.now()) {
+  if (now - lastBlockedPruneAt < BLOCKED_ATTEMPT_PRUNE_INTERVAL_MS) {
+    return;
+  }
+  lastBlockedPruneAt = now;
+
+  for (const [key, entry] of blockedAttemptStore.entries()) {
+    const windowMs = entry?.windowMs || DEFAULT_ANOMALY_POLICY.windowMs;
+    if (now - entry.windowStart > windowMs) {
+      blockedAttemptStore.delete(key);
+    }
+  }
+}
+
+function enforceBlockedAttemptCap() {
+  while (blockedAttemptStore.size > MAX_BLOCKED_ATTEMPT_ENTRIES) {
+    const firstKey = blockedAttemptStore.keys().next().value;
+    if (!firstKey) {
+      break;
+    }
+    blockedAttemptStore.delete(firstKey);
+  }
+}
+
 function normalizeCommandCategory(command) {
   return String(command?.category || '').trim().toLowerCase();
 }
@@ -80,14 +110,17 @@ function getProtectionKey(interaction, commandName) {
 function recordBlockedAttempt(key, commandName, interaction, command, remainingMs) {
   const now = Date.now();
   const anomalyPolicy = getAnomalyPolicy(command);
+  pruneBlockedAttemptStore(now);
   const current = blockedAttemptStore.get(key);
 
   if (!current || now - current.windowStart > anomalyPolicy.windowMs) {
     blockedAttemptStore.set(key, {
       count: 1,
       windowStart: now,
+      windowMs: anomalyPolicy.windowMs,
       thresholdReachedAt: null
     });
+    enforceBlockedAttemptCap();
     return;
   }
 

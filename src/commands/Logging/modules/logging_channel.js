@@ -1,4 +1,4 @@
-import { PermissionsBitField, ChannelType } from 'discord.js';
+import { PermissionsBitField, ChannelType, MessageFlags } from 'discord.js';
 import { setLogChannel } from '../../../services/loggingService.js';
 import { successEmbed } from '../../../utils/embeds.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
@@ -19,7 +19,7 @@ export default {
         return await replyUserError(interaction, { type: ErrorTypes.PERMISSION, message: 'You need **Manage Server** permissions to configure logging channels.' });
       }
 
-      await InteractionHelper.safeDefer(interaction, { ephemeral: true });
+      await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral, });
 
       const destination = interaction.options.getString('destination');
       const channel = interaction.options.getChannel('channel');
