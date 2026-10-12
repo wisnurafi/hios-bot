@@ -19,7 +19,8 @@ export default {
         
         const goodbyeChannelId = welcomeConfig?.goodbyeChannelId;
 
-        if (welcomeConfig?.goodbyeEnabled && goodbyeChannelId) {
+        // Bots don't get the goodbye message — only real members.
+        if (!user.bot && welcomeConfig?.goodbyeEnabled && goodbyeChannelId) {
             const channel = guild.channels.cache.get(goodbyeChannelId);
             if (channel?.isTextBased?.()) {
                 const me = guild.members.me;

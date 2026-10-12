@@ -150,8 +150,15 @@ function canManageWebhooks(channel) {
   return !!channel?.permissionsFor?.(channel.guild.members.me)?.has(PermissionFlagsBits.ManageWebhooks);
 }
 
-function describeRecord(record) {
-  return `**${record.name}** → <#${record.channelId}>`;
+function channelName(guild, channelId) {
+  return guild?.channels?.cache?.get(channelId)?.name ?? null;
+}
+
+function describeRecord(record, guild) {
+  const name = channelName(guild, record.channelId);
+  return name
+    ? `**${record.name}** → #${name} (<#${record.channelId}>)`
+    : `**${record.name}** → <#${record.channelId}>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +174,7 @@ function mainView(guild, records) {
       {
         name: `Managed webhooks (${records.length})`,
         value: records.length
-          ? records.map((r) => `• ${describeRecord(r)} — <@${r.createdBy}>`).join('\n')
+          ? records.map((r) => `• ${describeRecord(r, guild)} — <@${r.createdBy}>`).join('\n')
           : '_None yet. Click **Create Webhook** to make one._',
       },
     ],
@@ -190,7 +197,7 @@ function mainView(guild, records) {
         records.slice(0, 25).map((r) =>
           new StringSelectMenuOptionBuilder()
             .setLabel(r.name.slice(0, 100))
-            .setDescription(`#${r.channelId}`.slice(0, 100))
+            .setDescription(`#${channelName(guild, r.channelId) ?? r.channelId}`.slice(0, 100))
             .setValue(r.key)
             .setEmoji('🔗'),
         ),
@@ -201,10 +208,14 @@ function mainView(guild, records) {
   return { embeds: [embed], components };
 }
 
-function detailView(record) {
+function detailView(record, guild) {
+  const name = channelName(guild, record.channelId);
+  const targetLine = name
+    ? `Target channel: #${name} (<#${record.channelId}>)`
+    : `Target channel: <#${record.channelId}>`;
   const embed = createEmbed({
     title: `🔗 ${record.name}`,
-    description: `Target channel: <#${record.channelId}>\nCreated by <@${record.createdBy}> on <t:${Math.floor(record.createdAt / 1000)}:d>`,
+    description: `${targetLine}\nCreated by <@${record.createdBy}> on <t:${Math.floor(record.createdAt / 1000)}:d>`,
     color: 'primary',
     fields: [
       {
@@ -372,9 +383,9 @@ async function handleCreateChannel(interaction, client, guildId, userId) {
     userId,
   });
 
-  await interaction.editReply(detailView(record)).catch(() => {});
+  await interaction.editReply(detailView(record, interaction.guild)).catch(() => {});
   await interaction.followUp({
-    embeds: [successEmbed('Webhook Created', `${describeRecord(record)}\nUse **Copy Link** to grab its URL.`)],
+    embeds: [successEmbed('Webhook Created', `${describeRecord(record, interaction.guild)}\nUse **Copy Link** to grab its URL.`)],
     flags: MessageFlags.Ephemeral,
   }).catch(() => {});
 }
@@ -458,9 +469,9 @@ async function handleMoveChannel(interaction, client, guildId, records, key) {
       userId: interaction.user.id,
     });
 
-    await interaction.editReply(detailView(record)).catch(() => {});
+    await interaction.editReply(detailView(record, interaction.guild)).catch(() => {});
     await interaction.followUp({
-      embeds: [successEmbed('Webhook Moved', `${describeRecord(record)}\nThe URL changed — use **Copy Link** to grab the new one.`)],
+      embeds: [successEmbed('Webhook Moved', `${describeRecord(record, interaction.guild)}\nThe URL changed — use **Copy Link** to grab the new one.`)],
       flags: MessageFlags.Ephemeral,
     }).catch(() => {});
   } catch (err) {
@@ -517,7 +528,7 @@ async function handleRenameModal(interaction, client, guildId, userId, records, 
     await webhook.edit({ name });
     record.name = name;
     await saveRecords(guildId, records);
-    await interaction.editReply(detailView(record)).catch(() => {});
+    await interaction.editReply(detailView(record, interaction.guild)).catch(() => {});
   } catch (err) {
     logger.error('Failed to rename webhook:', err);
     await ephemeralError(submitted, `Could not rename webhook: ${err.message}`);
@@ -556,7 +567,7 @@ async function applyAvatar(interaction, client, guildId, records, key, buffer) {
     const webhook = await client.fetchWebhook(record.webhookId, record.token);
     await webhook.edit({ avatar: buffer });
     logger.info(`Avatar updated for managed webhook ${record.name}`, { event: 'webhook.avatar', guildId });
-    await interaction.editReply(detailView(record)).catch(() => {});
+    await interaction.editReply(detailView(record, interaction.guild)).catch(() => {});
     await interaction.followUp({
       embeds: [successEmbed('Avatar Updated', `Avatar for **${record.name}** updated.`)],
       flags: MessageFlags.Ephemeral,
@@ -744,7 +755,7 @@ async function routeComponent(interaction, client, guildId, userId) {
         await ephemeralError(interaction, 'Webhook not found. It may have been deleted.');
         return;
       }
-      await interaction.editReply(detailView(record)).catch(() => {});
+      await interaction.editReply(detailView(record, interaction.guild)).catch(() => {});
       return;
     }
     case 'detail': {
@@ -755,7 +766,7 @@ async function routeComponent(interaction, client, guildId, userId) {
         await ephemeralError(interaction, 'Webhook not found. It may have been deleted.');
         return;
       }
-      await interaction.editReply(detailView(record)).catch(() => {});
+      await interaction.editReply(detailView(record, interaction.guild)).catch(() => {});
       return;
     }
     case 'copy': {
