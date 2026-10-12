@@ -574,6 +574,70 @@ class PostgreSQLDatabase {
         }
     }
 
+    /**
+     * Top-N numeric KV entries under a temp_data prefix, in a single query.
+     * Used by the biweekly period-XP leaderboard (replaces list + N gets).
+     * Returns [{ key, value }].
+     */
+    async getTopByPrefix(prefix, limit = 15) {
+        try {
+            if (!this.isAvailable()) {
+                return [];
+            }
+
+            const safeLimit = Math.min(Math.max(Number.isInteger(limit) ? limit : 15, 1), 100);
+            assertAllowlistedIdentifier(
+                pgConfig.tables.temp_data,
+                this.allowedTableIdentifiers,
+                'getTopByPrefix'
+            );
+
+            const result = await this.pool.query(
+                `SELECT key, (value #>> '{}')::bigint AS num
+                 FROM ${pgConfig.tables.temp_data}
+                 WHERE key LIKE $1
+                   AND (expires_at IS NULL OR expires_at > NOW())
+                   AND (value #>> '{}') ~ '^[0-9]+$'
+                 ORDER BY (value #>> '{}')::bigint DESC
+                 LIMIT $2`,
+                [`${prefix}%`, safeLimit]
+            );
+
+            return result.rows.map((row) => ({ key: row.key, value: Number(row.num) || 0 }));
+        } catch (error) {
+            logger.error(`Error getting top by prefix ${prefix}:`, error);
+            return [];
+        }
+    }
+
+    /**
+     * Delete every temp_data key under a prefix in one query.
+     * Used by period rotation (replaces list + N deletes).
+     * Returns the number of deleted rows.
+     */
+    async deleteByPrefix(prefix) {
+        try {
+            if (!this.isAvailable()) {
+                return 0;
+            }
+
+            assertAllowlistedIdentifier(
+                pgConfig.tables.temp_data,
+                this.allowedTableIdentifiers,
+                'deleteByPrefix'
+            );
+
+            const result = await this.pool.query(
+                `DELETE FROM ${pgConfig.tables.temp_data} WHERE key LIKE $1`,
+                [`${prefix}%`]
+            );
+            return result.rowCount || 0;
+        } catch (error) {
+            logger.error(`Error deleting by prefix ${prefix}:`, error);
+            return 0;
+        }
+    }
+
     async insertVerificationAudit(record) {
         try {
             if (!this.isAvailable()) {
@@ -619,7 +683,7 @@ class PostgreSQLDatabase {
         }
     }
 
-    async increment(key, amount = 1) {
+    async increment(key, amount = 1, ttl = null) {
         try {
             if (!this.isAvailable()) {
                 return amount;
@@ -627,7 +691,7 @@ class PostgreSQLDatabase {
 
             const currentValue = await this.get(key, 0);
             const newValue = (typeof currentValue === 'number' ? currentValue : 0) + amount;
-            await this.set(key, newValue);
+            await this.set(key, newValue, ttl);
             return newValue;
         } catch (error) {
             logger.error(`Error incrementing key ${key}:`, error);

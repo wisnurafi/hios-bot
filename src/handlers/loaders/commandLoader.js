@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { createHash } from 'crypto';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { Collection } from 'discord.js';
 import { logger } from '../../utils/logger.js';
@@ -252,6 +253,25 @@ async function registerGlobalCommands(client, clientId, commands, totalSubcomman
 
     const commandsToRegister = prepareCommandsForRegistration(commands);
 
+    // Skip the global PUT when the payload is unchanged since the last
+    // successful registration. A crash-loop with successful login would
+    // otherwise hammer the command-write endpoint into a 429 spiral.
+    // The hash is written only after a successful PUT (bulk overwrite is
+    // atomic, so equal hash == equal remote state).
+    const payloadHash = createHash('sha256').update(JSON.stringify(commandsToRegister)).digest('hex');
+    const hashFile = path.join(process.cwd(), 'data', '.command-registration-hash');
+    if (!botConfig.commands?.deleteCommands) {
+        try {
+            const lastHash = (await fs.readFile(hashFile, 'utf8')).trim();
+            if (lastHash === payloadHash) {
+                logger.info(`Command payload unchanged (sha256 ${payloadHash.slice(0, 12)}…) — skipping global registration PUT`);
+                return;
+            }
+        } catch {
+            // No hash on file (first run) — proceed to register.
+        }
+    }
+
     if (botConfig.commands?.deleteCommands) {
         logger.info('Clearing existing global commands before registration...');
         await client.rest.put(`/applications/${clientId}/commands`, { body: [] });
@@ -261,6 +281,13 @@ async function registerGlobalCommands(client, clientId, commands, totalSubcomman
     await client.rest.put(`/applications/${clientId}/commands`, { body: commandsToRegister });
     logger.info(`Successfully registered ${commandsToRegister.length} global commands`);
     logger.info('Global commands may take up to an hour to appear in all servers on first deploy');
+
+    try {
+        await fs.mkdir(path.dirname(hashFile), { recursive: true });
+        await fs.writeFile(hashFile, payloadHash);
+    } catch (error) {
+        logger.warn(`Could not persist command registration hash: ${error.message}`);
+    }
 }
 
 export async function registerCommands(client, options = {}) {

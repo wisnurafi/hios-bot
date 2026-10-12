@@ -271,8 +271,13 @@ export default {
 };
 
 async function handleChannel(selectInteraction, rootInteraction, cfg, guildId, client) {
+    // Nonce per interaction: a fast double-click opens two modals with the
+    // same customId, and one submit would then resolve BOTH awaitModalSubmit
+    // listeners, running this handler twice. Unique customId keeps each
+    // submit routed to exactly one listener.
+    const modalNonce = selectInteraction.id;
     const modal = new ModalBuilder()
-        .setCustomId(`lbsched_channel_modal_${guildId}`)
+        .setCustomId(`lbsched_channel_modal_${guildId}_${modalNonce}`)
         .setTitle('📢 Post Channel');
 
     const channelSelect = new ChannelSelectMenuBuilder()
@@ -293,7 +298,7 @@ async function handleChannel(selectInteraction, rootInteraction, cfg, guildId, c
 
     const submitted = await selectInteraction
         .awaitModalSubmit({
-            filter: (i) => i.customId === `lbsched_channel_modal_${guildId}` && i.user.id === selectInteraction.user.id,
+            filter: (i) => i.customId === `lbsched_channel_modal_${guildId}_${modalNonce}` && i.user.id === selectInteraction.user.id,
             time: 120_000,
         })
         .catch(() => null);
@@ -376,8 +381,10 @@ async function handleDay(selectInteraction, rootInteraction, cfg, guildId, clien
 async function handleTime(selectInteraction, rootInteraction, cfg, guildId, client) {
     const sched = getSchedSettings(cfg);
 
+    // Nonce per interaction — see handleChannel for why.
+    const modalNonce = selectInteraction.id;
     const modal = new ModalBuilder()
-        .setCustomId(`lbsched_time_modal_${guildId}`)
+        .setCustomId(`lbsched_time_modal_${guildId}_${modalNonce}`)
         .setTitle('⏰ Post Time (WIB)')
         .addComponents(
             new ActionRowBuilder().addComponents(
@@ -408,7 +415,7 @@ async function handleTime(selectInteraction, rootInteraction, cfg, guildId, clie
 
     const submitted = await selectInteraction
         .awaitModalSubmit({
-            filter: (i) => i.customId === `lbsched_time_modal_${guildId}` && i.user.id === selectInteraction.user.id,
+            filter: (i) => i.customId === `lbsched_time_modal_${guildId}_${modalNonce}` && i.user.id === selectInteraction.user.id,
             time: 120_000,
         })
         .catch(() => null);

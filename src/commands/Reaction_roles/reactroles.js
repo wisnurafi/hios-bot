@@ -562,6 +562,11 @@ async function repostReactionRolePanel(guild, panelData, client, guildId, fallba
     return sent;
 }
 
+// Active dashboard sessions per guild+user. Opening a second dashboard stops
+// the first: otherwise its buttons stay live until timeout and operate on
+// stale panel data.
+const activeDashboardSessions = new Map();
+
 async function handleDashboard(interaction, selectedPanelId) {
     const deferSuccess = await InteractionHelper.safeDefer(interaction, { flags: DASHBOARD_EPHEMERAL });
     if (!deferSuccess) return;
@@ -569,6 +574,19 @@ async function handleDashboard(interaction, selectedPanelId) {
     const client = interaction.client;
     const guildId = interaction.guild.id;
     const guild = interaction.guild;
+
+    const sessionKey = `${guildId}:${interaction.user.id}`;
+    const prevSession = activeDashboardSessions.get(sessionKey);
+    if (prevSession) {
+        activeDashboardSessions.delete(sessionKey);
+        try {
+            prevSession.stop();
+            // Disable the old dashboard message so its buttons can't be used.
+            await InteractionHelper.safeEditReply(prevSession.interaction, { components: [] });
+        } catch {
+            // Best-effort; the old session times out on its own anyway.
+        }
+    }
 
     const panels = await getAllReactionRoleMessages(client, guildId);
     if (!panels?.length) {
@@ -601,7 +619,7 @@ async function handleDashboard(interaction, selectedPanelId) {
     const discordMsg = panelStatus.message || (await fetchPanelDiscordMessage(guild, panelData));
     const payload = buildReactionRoleDashboardPayload(panelData, discordMsg, guildId, guild, panelStatus);
 
-    await startDashboardSession({
+    const session = await startDashboardSession({
         interaction,
         ...payload,
         flags: DASHBOARD_EPHEMERAL,
@@ -655,6 +673,7 @@ async function handleDashboard(interaction, selectedPanelId) {
             }
         },
     });
+    activeDashboardSessions.set(sessionKey, { stop: session.stop, interaction });
 }
 
 async function handleEditText(buttonInteraction, rootInteraction, panelData, guildId, guild, client) {

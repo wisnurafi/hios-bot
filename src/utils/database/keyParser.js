@@ -79,6 +79,14 @@ export function parseKey(key) {
             if (parts[3] === 'users' && parts[4]) {
                 return { type: 'user_level', guildId, userId: parts[4], fullKey };
             }
+            if (parts[3] === 'period') {
+                // Biweekly period-XP counters: plain KV in temp_data (with TTL
+                // support). NOTE: these MUST NOT fall through to
+                // 'leveling_data' — that type has no storage handler, so
+                // writes were silently dropped (period tracking never
+                // persisted). Fixed 2026-10-12.
+                return { type: 'temp', fullKey };
+            }
             return { type: 'leveling_data', guildId, fullKey };
         }
         if (parts[2] === 'economy' && parts[3]) {

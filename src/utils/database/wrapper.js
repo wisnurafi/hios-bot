@@ -215,17 +215,53 @@ class DatabaseWrapper {
         return value !== null;
     }
 
-    async increment(key, amount = 1) {
+    async increment(key, amount = 1, ttl = null) {
         if (this.useFallback) {
             logger.debug(`[DEGRADED] Incrementing in memory: ${key}`);
         }
         if (this.db.increment) {
-            return this.db.increment(key, amount);
+            return this.db.increment(key, amount, ttl);
         }
         const current = await this.db.get(key, 0);
         const newValue = current + amount;
-        await this.db.set(key, newValue);
+        await this.db.set(key, newValue, ttl);
         return newValue;
+    }
+
+    /**
+     * Top-N numeric KV entries under a prefix. Single indexed query on
+     * PostgreSQL; list+get+sort fallback while degraded.
+     */
+    async getTopByPrefix(prefix, limit = 15) {
+        if (!this.useFallback && typeof this.db.getTopByPrefix === 'function') {
+            return this.db.getTopByPrefix(prefix, limit);
+        }
+        const keys = await this.db.list(prefix);
+        const rows = [];
+        for (const key of keys) {
+            const value = Number(await this.db.get(key)) || 0;
+            if (value > 0) rows.push({ key, value });
+        }
+        rows.sort((a, b) => b.value - a.value);
+        const safeLimit = Math.min(Math.max(Number.isInteger(limit) ? limit : 15, 1), 100);
+        return rows.slice(0, safeLimit);
+    }
+
+    /**
+     * Delete every key under a prefix. Single query on PostgreSQL;
+     * list+delete fallback while degraded. Returns deleted count.
+     */
+    async deleteByPrefix(prefix) {
+        if (!this.useFallback && typeof this.db.deleteByPrefix === 'function') {
+            return this.db.deleteByPrefix(prefix);
+        }
+        const keys = await this.db.list(prefix);
+        let count = 0;
+        for (const key of keys) {
+            await this.db.delete(key);
+            count++;
+        }
+        return count;
     }
 
     async decrement(key, amount = 1) {

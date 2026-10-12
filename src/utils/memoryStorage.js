@@ -72,10 +72,10 @@ class MemoryStorage {
         return value !== undefined;
     }
 
-    async increment(key, amount = 1) {
+    async increment(key, amount = 1, ttl = null) {
         const current = await this.get(key, 0);
         const newValue = current + amount;
-        await this.set(key, newValue);
+        await this.set(key, newValue, ttl);
         return newValue;
     }
 
