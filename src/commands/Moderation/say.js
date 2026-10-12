@@ -100,7 +100,11 @@ export default {
             });
         }
 
-        const sentMessage = await channel.send({ content: message });
+        const sentMessage = await channel.send({
+            content: message,
+            // Never allow @everyone/@here or role pings via /say.
+            allowedMentions: { parse: [] },
+        });
 
         await logEvent({
             client,

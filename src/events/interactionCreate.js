@@ -166,15 +166,30 @@ export default {
               })());
 
               if (middlewareResult.timedOut) {
-                // DB too slow (e.g. Neon waking from suspend). Fail open with
-                // defaults so the command can still ack within Discord's 3s
-                // window — the command handles DB errors itself. Discord's
-                // declared permissions are still enforced below.
-                logger.warn('Command middleware DB timed out — proceeding with defaults', withTraceContext({
-                  event: 'interaction.middleware.db_timeout',
-                  commandName: interaction.commandName,
-                }, interactionTraceContext));
-                guildConfig = null;
+                // DB too slow (e.g. Neon waking from suspend). Fail CLOSED:
+                // we cannot verify lockdown exemptions, so the command is
+                // blocked instead of risking a lockdown bypass.
+                // (Decision 2026-10-12: strictness over availability.)
+                // Owner bypasses: they bypass lockdown by design anyway, so
+                // letting them through keeps the security model intact.
+                if (isBotOwner(interaction.user.id)) {
+                  logger.warn('Command middleware DB timed out — owner bypass, proceeding with defaults', withTraceContext({
+                    event: 'interaction.middleware.db_timeout_owner_bypass',
+                    commandName: interaction.commandName,
+                  }, interactionTraceContext));
+                  guildConfig = null;
+                } else {
+                  logger.warn('Command middleware DB timed out — blocking command (fail-closed)', withTraceContext({
+                    event: 'interaction.middleware.db_timeout_blocked',
+                    commandName: interaction.commandName,
+                  }, interactionTraceContext));
+                  throw createError(
+                    `Command middleware timed out for ${interaction.commandName}`,
+                    ErrorTypes.DATABASE,
+                    'The bot is busy right now. Please try again in a moment.',
+                    withTraceContext({ commandName: interaction.commandName, guildId: interaction.guildId }, interactionTraceContext)
+                  );
+                }
               } else {
                 if (!middlewareResult.ok) {
                   // Genuine DB error (not timeout) — preserve old behavior.
@@ -194,7 +209,7 @@ export default {
                 // Control lockdown: restrict WHERE (channels) and BY WHOM (users)
                 // slash commands can be invoked. Empty lists = no restriction.
                 // Bot owner and excepted commands bypass. On middleware DB
-                // timeout we fail open (no lockdown), same as the config above.
+                // timeout we fail closed (block the command) — see above.
                 // Component interactions are intentionally NOT covered — public
                 // panels (ticket, verification, reaction roles) must keep working.
                 const lockdownBlock = checkControlLockdown(middlewareResult.value.lockdown, {

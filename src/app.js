@@ -30,9 +30,10 @@ class HiosBot extends Client {
         GatewayIntentBits.MessageContent,               
         GatewayIntentBits.DirectMessages,
 
-        GatewayIntentBits.GuildVoiceStates,             
-
-        GatewayIntentBits.GuildBans,                    
+        GatewayIntentBits.GuildVoiceStates,
+        // NOTE: GuildBans removed (2026-10-12) — no ban event listeners or
+        // bans.cache usage anywhere; the only touch is guild.bans.fetch()
+        // (REST), which does not need the intent.
       ],
     });
 
@@ -132,13 +133,21 @@ class HiosBot extends Client {
     const requestCounts = new Map();
     const windowMs = this.config.api?.rateLimit?.windowMs || 60000;
     const maxRequests = this.config.api?.rateLimit?.max || 100;
-    
+    // Bound the map: one entry per unique IP, never evicted otherwise.
+    // 5000 IPs x ~100 timestamps is a few MB worst-case on a 512MB box.
+    const RATE_LIMIT_MAP_MAX = 5000;
+
     app.use((req, res, next) => {
       const ip = req.ip;
       const now = Date.now();
       const windowStart = now - windowMs;
-      
+
       if (!requestCounts.has(ip)) {
+        if (requestCounts.size >= RATE_LIMIT_MAP_MAX) {
+          // Evict oldest (Map preserves insertion order).
+          const oldest = requestCounts.keys().next();
+          if (!oldest.done) requestCounts.delete(oldest.value);
+        }
         requestCounts.set(ip, []);
       }
       

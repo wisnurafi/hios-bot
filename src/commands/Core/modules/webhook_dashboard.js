@@ -23,6 +23,8 @@ import {
 } from 'discord.js';
 import axios from 'axios';
 import crypto from 'crypto';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { getFromDb, setInDb } from '../../../utils/database/wrapper.js';
 import { getManagedWebhooksKey } from '../../../utils/database/keys.js';
 import {
@@ -78,8 +80,15 @@ async function loadRecords(guildId) {
   return Array.isArray(records) ? records : [];
 }
 
+// Prune results are cached per guild for 60s: pruneRecords runs on every
+// dashboard open/refresh/back, and each record costs one Discord API call.
+const pruneCache = new Map(); // guildId -> { records, expiresAt }
+const PRUNE_CACHE_TTL_MS = 60_000;
+
 async function saveRecords(guildId, records) {
   await setInDb(getManagedWebhooksKey(guildId), records);
+  // Records changed -> prune cache for this guild is stale.
+  pruneCache.delete(guildId);
 }
 
 function findRecord(records, key) {
@@ -88,6 +97,10 @@ function findRecord(records, key) {
 
 // Drop records whose webhook no longer exists on Discord (self-healing).
 async function pruneRecords(client, guildId, records) {
+  const cached = pruneCache.get(guildId);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.records;
+  }
   const kept = [];
   for (const record of records) {
     try {
@@ -103,6 +116,7 @@ async function pruneRecords(client, guildId, records) {
   if (kept.length !== records.length) {
     await saveRecords(guildId, kept);
   }
+  pruneCache.set(guildId, { records: kept, expiresAt: Date.now() + PRUNE_CACHE_TTL_MS });
   return kept;
 }
 
@@ -124,7 +138,57 @@ function validateName(raw) {
   return name;
 }
 
+/**
+ * SSRF guard for user-supplied avatar URLs. The dashboard is ManageGuild-gated,
+ * but a blind request from the Wispbyte network (private ranges, cloud
+ * metadata 169.254.169.254) must never happen.
+ */
+function isPrivateIp(ip) {
+  const v4 = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const a = Number(v4[1]);
+    const b = Number(v4[2]);
+    return (
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a === 127 ||
+      (a === 169 && b === 254) || // link-local incl. cloud metadata
+      a === 0
+    );
+  }
+  const low = ip.toLowerCase();
+  return low === '::1' || low.startsWith('fe80:') || low.startsWith('fc') || low.startsWith('fd');
+}
+
+async function assertPublicAvatarUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('Invalid URL.');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Avatar URL must use https.');
+  }
+  const host = parsed.hostname;
+  let addresses;
+  if (isIP(host)) {
+    addresses = [host];
+  } else {
+    try {
+      addresses = (await lookup(host, { all: true })).map((r) => r.address);
+    } catch {
+      throw new Error('Could not resolve avatar host.');
+    }
+  }
+  if (addresses.length === 0 || addresses.some(isPrivateIp)) {
+    throw new Error('Avatar URL must point to a public address.');
+  }
+}
+
 async function fetchAvatarBuffer(url) {
+  await assertPublicAvatarUrl(url);
   let res;
   try {
     res = await axios.get(url, {

@@ -31,6 +31,8 @@ export default {
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
         .setDMPermission(false),
     category: "moderation",
+    // Mass-DM via the bot is the fastest way to get it flagged by Discord.
+    abuseProtection: { maxAttempts: 3, windowMs: 60_000 },
 
     async execute(interaction, config, client) {
         const deferSuccess = await InteractionHelper.safeDefer(interaction);

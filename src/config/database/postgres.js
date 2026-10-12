@@ -78,7 +78,7 @@ export function resolvePostgresPoolConfig() {
     const url = (process.env.POSTGRES_URL || process.env.DATABASE_URL || '').trim();
     const sharedOptions = {
         max: parseInt(process.env.POSTGRES_MAX_CONNECTIONS) || 20,
-        min: parseInt(process.env.POSTGRES_MIN_CONNECTIONS) || 2,
+        min: parseInt(process.env.POSTGRES_MIN_CONNECTIONS) || 0, // 0: pg idleTimeout closes idle conns itself; avoids Neon server-side kills of permanent min-conns (log noise)
         idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
         connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 30000, // 30s: covers Neon free-tier cold start (10-30s wake)
         application_name: 'hios-bot',
@@ -115,7 +115,7 @@ export const pgConfig = {
         ssl: resolveSslConfig(),
 
         max: parseInt(process.env.POSTGRES_MAX_CONNECTIONS) || 20,
-        min: parseInt(process.env.POSTGRES_MIN_CONNECTIONS) || 2,
+        min: parseInt(process.env.POSTGRES_MIN_CONNECTIONS) || 0, // 0: pg idleTimeout closes idle conns itself; avoids Neon server-side kills of permanent min-conns (log noise)
         idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
         connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 30000, // 30s: covers Neon free-tier cold start (10-30s wake)
 
