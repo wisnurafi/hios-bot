@@ -102,12 +102,12 @@ export const botConfig = {
         urgent: "#e74c3c",
       },
     },
-    footer: {
-      // Default footer text used in bot embeds.
-      text: "HIOS Assistant",
-      // Footer icon URL (null = no icon).
-      icon: "https://i.pinimg.com/736x/7b/73/33/7b733343a59487ddc95f66e5976878cd.jpg",
-    },
+    // NOTE (2026-10-12): no default embed footer by design — decorative
+    // footers are intentionally dropped by the EmbedBuilder patch in
+    // src/utils/embeds.js (isImportantFooter), so a footer default here
+    // would be dead, misleading config. Explicit footers passed to
+    // createEmbed({ footer }) still work (audit/pagination footers pass
+    // the allow-list).
     // Default thumbnail URL for embeds (null = no thumbnail).
     thumbnail: "https://i.pinimg.com/736x/7b/73/33/7b733343a59487ddc95f66e5976878cd.jpg",
     author: {

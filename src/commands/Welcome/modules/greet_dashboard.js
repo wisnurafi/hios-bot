@@ -18,6 +18,7 @@ import {
     TextDisplayBuilder,
 } from 'discord.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
+import { startDashboardSession } from '../../../utils/dashboardSession.js';
 import { successEmbed } from '../../../utils/embeds.js';
 import { logger } from '../../../utils/logger.js';
 import { HiosBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
@@ -213,24 +214,27 @@ export default {
 
             const selectMenu = buildSelectMenu(guildId);
 
-            await InteractionHelper.safeEditReply(interaction, {
+            // Shared dashboard lifecycle: collector filter, 10-min timeout
+            // UX and error handling live in startDashboardSession.
+            await startDashboardSession({
+                interaction,
                 embeds: [buildDashboardEmbed(cfg, interaction.guild)],
                 components: [
                     ...buildButtonRow(cfg, guildId),
                     new ActionRowBuilder().addComponents(selectMenu),
                 ],
-            });
-
-            const collector = interaction.channel.createMessageComponentCollector({
-                componentType: ComponentType.StringSelect,
-                filter: i =>
-                    i.user.id === interaction.user.id && i.customId === `greet_cfg_${guildId}`,
-                time: 600_000,
-            });
-
-            collector.on('collect', async selectInteraction => {
-                const selectedOption = selectInteraction.values[0];
-                try {
+                selectMenuId: `greet_cfg_${guildId}`,
+                buttonMatcher: [
+                    `greet_cfg_toggle_welcome_${guildId}`,
+                    `greet_cfg_toggle_goodbye_${guildId}`,
+                    `greet_cfg_ping_welcome_${guildId}`,
+                    `greet_cfg_ping_goodbye_${guildId}`,
+                ],
+                onSelect: async selectInteraction => {
+                    const selectedOption = selectInteraction.values[0];
+                    // No try/catch here on purpose: startDashboardSession wraps
+                    // onSelect with the same handling the old inline catch had
+                    // (defer guard + replyUserError), plus a 40060 guard.
                     switch (selectedOption) {
                         case 'welcome_channel':
                             await handleWelcomeChannel(selectInteraction, interaction, cfg, guildId, client);
@@ -268,117 +272,71 @@ export default {
                             await handleGoodbyeImage(selectInteraction, interaction, cfg, guildId, client);
                             break;
                     }
-                } catch (error) {
-                    if (error instanceof HiosBotError) {
-                        logger.debug(`Greet config validation error: ${error.message}`);
-                    } else {
-                        logger.error('Unexpected greet dashboard error:', error);
-                    }
-
-                    const errorMessage =
-                        error instanceof HiosBotError
-                            ? error.userMessage || 'An error occurred while processing your selection.'
-                            : 'An unexpected error occurred while updating the configuration.';
-
-                    if (!selectInteraction.replied && !selectInteraction.deferred) {
-                        await selectInteraction.deferUpdate().catch(() => {});
-                    }
-
-                    await replyUserError(selectInteraction, {
-                        type: ErrorTypes.CONFIGURATION,
-                        message: errorMessage,
-                    }).catch(() => {});
-                }
-            });
-
-            const btnCollector = interaction.channel.createMessageComponentCollector({
-                componentType: ComponentType.Button,
-                filter: i =>
-                    i.user.id === interaction.user.id &&
-                    (i.customId === `greet_cfg_toggle_welcome_${guildId}` ||
-                        i.customId === `greet_cfg_toggle_goodbye_${guildId}` ||
-                        i.customId === `greet_cfg_ping_welcome_${guildId}` ||
-                        i.customId === `greet_cfg_ping_goodbye_${guildId}`),
-                time: 600_000,
-            });
-
-            btnCollector.on('collect', async btnInteraction => {
-                try {
-                    if (!await deferComponent(btnInteraction)) {
-                        return;
-                    }
-
-                    const customId = btnInteraction.customId;
-
-                    if (customId === `greet_cfg_toggle_welcome_${guildId}`) {
-                        cfg.enabled = !cfg.enabled;
-                        await saveWelcomeConfig(client, guildId, cfg);
-                        await sendEphemeralFollowUp(btnInteraction, {
-                            embeds: [
-                                successEmbed(
-                                    '✅ Welcome Updated',
-                                    `Welcome messages are now **${cfg.enabled ? 'enabled' : 'disabled'}**.`,
-                                ),
-                            ],
-                        });
-                    } else if (customId === `greet_cfg_toggle_goodbye_${guildId}`) {
-                        cfg.goodbyeEnabled = !cfg.goodbyeEnabled;
-                        await saveWelcomeConfig(client, guildId, cfg);
-                        await sendEphemeralFollowUp(btnInteraction, {
-                            embeds: [
-                                successEmbed(
-                                    '✅ Goodbye Updated',
-                                    `Goodbye messages are now **${cfg.goodbyeEnabled ? 'enabled' : 'disabled'}**.`,
-                                ),
-                            ],
-                        });
-                    } else if (customId === `greet_cfg_ping_welcome_${guildId}`) {
-                        cfg.welcomePing = !cfg.welcomePing;
-                        await saveWelcomeConfig(client, guildId, cfg);
-                        await sendEphemeralFollowUp(btnInteraction, {
-                            embeds: [
-                                successEmbed(
-                                    '✅ Welcome Ping Updated',
-                                    `Joining users will${cfg.welcomePing ? '' : ' **not**'} be pinged in the welcome message.`,
-                                ),
-                            ],
-                        });
-                    } else if (customId === `greet_cfg_ping_goodbye_${guildId}`) {
-                        cfg.goodbyePing = !cfg.goodbyePing;
-                        await saveWelcomeConfig(client, guildId, cfg);
-                        await sendEphemeralFollowUp(btnInteraction, {
-                            embeds: [
-                                successEmbed(
-                                    '✅ Goodbye Ping Updated',
-                                    `Leaving users will${cfg.goodbyePing ? '' : ' **not**'} be pinged in the goodbye message.`,
-                                ),
-                            ],
-                        });
-                    }
-
-                    await refreshDashboard(interaction, cfg, guildId);
-                } catch (error) {
-                    logger.error('Error handling greet dashboard button:', error);
-                }
-            });
-
-            collector.on('end', async (collected, reason) => {
-                if (reason === 'time') {
-                    btnCollector.stop();
+                },
+                // The button handler keeps its own try/catch on purpose: its
+                // legacy behavior is log-only (no user-facing error).
+                onButton: async btnInteraction => {
                     try {
-                        await InteractionHelper.safeEditReply(interaction, {
-                            embeds: [
-                                new EmbedBuilder()
-                                    .setTitle('Dashboard Timed Out')
-                                    .setDescription('This dashboard has been closed due to inactivity. Please run the command again to continue.')
-                                    .setColor(getColor('error'))
-                            ],
-                            components: [],
-                        });
+                        if (!await deferComponent(btnInteraction)) {
+                            return;
+                        }
+
+                        const customId = btnInteraction.customId;
+
+                        if (customId === `greet_cfg_toggle_welcome_${guildId}`) {
+                            cfg.enabled = !cfg.enabled;
+                            await saveWelcomeConfig(client, guildId, cfg);
+                            await sendEphemeralFollowUp(btnInteraction, {
+                                embeds: [
+                                    successEmbed(
+                                        '✅ Welcome Updated',
+                                        `Welcome messages are now **${cfg.enabled ? 'enabled' : 'disabled'}**.`,
+                                    ),
+                                ],
+                            });
+                        } else if (customId === `greet_cfg_toggle_goodbye_${guildId}`) {
+                            cfg.goodbyeEnabled = !cfg.goodbyeEnabled;
+                            await saveWelcomeConfig(client, guildId, cfg);
+                            await sendEphemeralFollowUp(btnInteraction, {
+                                embeds: [
+                                    successEmbed(
+                                        '✅ Goodbye Updated',
+                                        `Goodbye messages are now **${cfg.goodbyeEnabled ? 'enabled' : 'disabled'}**.`,
+                                    ),
+                                ],
+                            });
+                        } else if (customId === `greet_cfg_ping_welcome_${guildId}`) {
+                            cfg.welcomePing = !cfg.welcomePing;
+                            await saveWelcomeConfig(client, guildId, cfg);
+                            await sendEphemeralFollowUp(btnInteraction, {
+                                embeds: [
+                                    successEmbed(
+                                        '✅ Welcome Ping Updated',
+                                        `Joining users will${cfg.welcomePing ? '' : ' **not**'} be pinged in the welcome message.`,
+                                    ),
+                                ],
+                            });
+                        } else if (customId === `greet_cfg_ping_goodbye_${guildId}`) {
+                            cfg.goodbyePing = !cfg.goodbyePing;
+                            await saveWelcomeConfig(client, guildId, cfg);
+                            await sendEphemeralFollowUp(btnInteraction, {
+                                embeds: [
+                                    successEmbed(
+                                        '✅ Goodbye Ping Updated',
+                                        `Leaving users will${cfg.goodbyePing ? '' : ' **not**'} be pinged in the goodbye message.`,
+                                    ),
+                                ],
+                            });
+                        }
+
+                        await refreshDashboard(interaction, cfg, guildId);
                     } catch (error) {
-                        logger.debug('Could not update dashboard on timeout:', error.message);
+                        logger.error('Error handling greet dashboard button:', error);
                     }
-                }
+                },
+                // Default onTimeout: the shared "Dashboard Timed Out" embed
+                // carries the exact same title/description as the old inline
+                // handler below had.
             });
         } catch (error) {
             if (error instanceof HiosBotError) throw error;

@@ -177,13 +177,11 @@ export function createEmbed({
     } catch (error) {
       
     }
-  } else if (botConfig.embeds?.footer?.text) {
-    const defaultFooter = {
-      text: botConfig.embeds.footer.text,
-      ...(botConfig.embeds.footer.icon ? { iconURL: botConfig.embeds.footer.icon } : {}),
-    };
-    embed.setFooter(defaultFooter);
   }
+  // NOTE (2026-10-12): no default footer here by design. Decorative
+  // footers are intentionally dropped by the EmbedBuilder patch above
+  // (see isImportantFooter) — a default footer would be dead config,
+  // so createEmbed must not auto-attach one.
 
   if (thumbnail) {
     try {

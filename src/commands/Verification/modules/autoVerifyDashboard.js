@@ -14,6 +14,7 @@ import {
     EmbedBuilder,
 } from 'discord.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
+import { startDashboardSession } from '../../../utils/dashboardSession.js';
 import { successEmbed } from '../../../utils/embeds.js';
 import { logger } from '../../../utils/logger.js';
 import { HiosBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
@@ -196,25 +197,26 @@ export default {
                 logger.warn('Could not fetch autoverify dashboard conflicts:', error.message);
             }
 
-            await InteractionHelper.safeEditReply(interaction, {
+            // Shared dashboard lifecycle: collector filter, 10-min timeout
+            // UX and error handling live in startDashboardSession.
+            await startDashboardSession({
+                interaction,
                 embeds: [buildDashboardEmbed(guildConfig, interaction.guild, conflictSummary)],
                 components: [
                     buildButtonRow(guildConfig, guildId),
                     new ActionRowBuilder().addComponents(selectMenu),
                 ],
                 flags: MessageFlags.Ephemeral,
-            });
-
-            const collector = interaction.channel.createMessageComponentCollector({
-                componentType: ComponentType.StringSelect,
-                filter: i =>
-                    i.user.id === interaction.user.id && i.customId === `autoverify_cfg_${guildId}`,
-                time: 600_000,
-            });
-
-            collector.on('collect', async selectInteraction => {
-                const selectedOption = selectInteraction.values[0];
-                try {
+                selectMenuId: `autoverify_cfg_${guildId}`,
+                buttonMatcher: [
+                    `autoverify_cfg_toggle_${guildId}`,
+                    `autoverify_cfg_criteria_${guildId}`,
+                ],
+                onSelect: async selectInteraction => {
+                    const selectedOption = selectInteraction.values[0];
+                    // No try/catch here on purpose: startDashboardSession wraps
+                    // onSelect with the same handling the old inline catch had
+                    // (defer guard + replyUserError), plus a 40060 guard.
                     switch (selectedOption) {
                         case 'role':
                             await handleRole(selectInteraction, interaction, guildConfig, guildId, client);
@@ -223,80 +225,37 @@ export default {
                             await handleAccountAge(selectInteraction, interaction, guildConfig, guildId, client);
                             break;
                     }
-                } catch (error) {
-                    if (error instanceof HiosBotError) {
-                        logger.debug(`Autoverify config validation error: ${error.message}`);
-                    } else {
-                        logger.error('Unexpected autoverify dashboard error:', error);
-                    }
-
-                    const errorMessage =
-                        error instanceof HiosBotError
-                            ? error.userMessage || 'An error occurred while processing your selection.'
-                            : 'An unexpected error occurred while updating the configuration.';
-
-                    if (!selectInteraction.replied && !selectInteraction.deferred) {
-                        await selectInteraction.deferUpdate().catch(() => {});
-                    }
-
-                    await replyUserError(selectInteraction, {
-                        type: ErrorTypes.CONFIGURATION,
-                        message: errorMessage,
-                    }).catch(() => {});
-                }
-            });
-
-            const btnCollector = interaction.channel.createMessageComponentCollector({
-                componentType: ComponentType.Button,
-                filter: i =>
-                    i.user.id === interaction.user.id && 
-                    (i.customId === `autoverify_cfg_toggle_${guildId}` || i.customId === `autoverify_cfg_criteria_${guildId}`),
-                time: 600_000,
-            });
-
-            btnCollector.on('collect', async btnInteraction => {
-                try {
-                    if (btnInteraction.customId === `autoverify_cfg_criteria_${guildId}`) {
-                        await handleCriteria(btnInteraction, interaction, guildConfig, guildId, client);
-                    } else if (btnInteraction.customId === `autoverify_cfg_toggle_${guildId}`) {
-                        await btnInteraction.deferUpdate().catch(() => null);
-                        guildConfig.verification.autoVerify.enabled = !guildConfig.verification.autoVerify.enabled;
-                        await setGuildConfig(client, guildId, guildConfig);
-                        
-                        await btnInteraction.followUp({
-                            embeds: [
-                                successEmbed(
-                                    '✅ Status Updated',
-                                    `Auto-verification is now **${guildConfig.verification.autoVerify.enabled ? 'enabled' : 'disabled'}**.`,
-                                ),
-                            ],
-                            flags: MessageFlags.Ephemeral,
-                        });
-
-                        await refreshDashboard(interaction, guildConfig, guildId, client);
-                    }
-                } catch (err) {
-                    logger.debug('Button interaction error:', err.message);
-                }
-            });
-
-            collector.on('end', async (collected, reason) => {
-                if (reason === 'time') {
-                    btnCollector.stop();
+                },
+                // The button handler keeps its own try/catch on purpose: its
+                // legacy behavior is log-only (no user-facing error).
+                onButton: async btnInteraction => {
                     try {
-                        const timeoutEmbed = new EmbedBuilder()
-                            .setTitle('Dashboard Timed Out')
-                            .setDescription('This dashboard has been closed due to inactivity. Please run the command again to continue.')
-                            .setColor(getColor('error'));
-                        await InteractionHelper.safeEditReply(interaction, {
-                            embeds: [timeoutEmbed],
-                            components: [],
-                            flags: MessageFlags.Ephemeral,
-                        });
-                    } catch (error) {
-                        logger.debug('Could not update dashboard on timeout:', error.message);
+                        if (btnInteraction.customId === `autoverify_cfg_criteria_${guildId}`) {
+                            await handleCriteria(btnInteraction, interaction, guildConfig, guildId, client);
+                        } else if (btnInteraction.customId === `autoverify_cfg_toggle_${guildId}`) {
+                            await btnInteraction.deferUpdate().catch(() => null);
+                            guildConfig.verification.autoVerify.enabled = !guildConfig.verification.autoVerify.enabled;
+                            await setGuildConfig(client, guildId, guildConfig);
+                        
+                            await btnInteraction.followUp({
+                                embeds: [
+                                    successEmbed(
+                                        '✅ Status Updated',
+                                        `Auto-verification is now **${guildConfig.verification.autoVerify.enabled ? 'enabled' : 'disabled'}**.`,
+                                    ),
+                                ],
+                                flags: MessageFlags.Ephemeral,
+                            });
+
+                            await refreshDashboard(interaction, guildConfig, guildId, client);
+                        }
+                    } catch (err) {
+                        logger.debug('Button interaction error:', err.message);
                     }
-                }
+                },
+                // Default onTimeout: the shared "Dashboard Timed Out" embed
+                // carries the exact same title/description as the old inline
+                // handler below had.
             });
         } catch (error) {
             if (error instanceof HiosBotError) throw error;

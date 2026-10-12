@@ -16,6 +16,7 @@ import {
     ChannelType,
 } from 'discord.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+import { startDashboardSession } from '../../utils/dashboardSession.js';
 import { createEmbed, successEmbed, infoEmbed, warningEmbed, buildUserErrorEmbed } from '../../utils/embeds.js';
 import { replyUserError, ErrorTypes } from '../../utils/errorHandler.js';
 import { getGuildConfig, setConfigValue } from '../../services/config/guildConfig.js';
@@ -629,35 +630,21 @@ export default {
             const embed = buildDashboardEmbed(guildConfig, interaction.guild);
             const components = [buildButtonRow(guildConfig, interaction.guildId), buildSettingsSelect(interaction.guildId)];
 
-            await InteractionHelper.safeEditReply(interaction, { embeds: [embed], components });
-
-            const replyMessage = await interaction.fetchReply().catch(() => null);
-            if (!replyMessage) {
-                return;
-            }
-
-            const collectorFilter = (componentInteraction) =>
-                componentInteraction.user.id === interaction.user.id &&
-                componentInteraction.customId.includes(`:${interaction.guildId}`);
-
-            const componentCollector = replyMessage.createMessageComponentCollector({
-                filter: collectorFilter,
-                time: 600_000,
-            });
-
-            componentCollector.on('collect', async (componentInteraction) => {
-                try {
-                    if (componentInteraction.isButton()) {
-                        await componentInteraction.deferUpdate();
-
-                        if (componentInteraction.customId.startsWith(`${WIZARD_BUTTON_ID}:`)) {
-                            const latestConfig = await getGuildConfig(interaction.client, interaction.guildId);
-                            await runSetupWizard(componentInteraction, latestConfig, interaction.guild, interaction.client, interaction);
-                        }
-                        return;
-                    }
-
-                    if (componentInteraction.isStringSelectMenu()) {
+            // Shared dashboard lifecycle (collector filter + timeout + error
+            // handling). The old loose `includes(':<guildId>')` filter is
+            // replaced by exact customId matches + the dashboard message
+            // guard — in practice only these two component ids exist, so
+            // behavior is unchanged.
+            // NOTE: onTimeout is intentionally silent — this dashboard never
+            // had an 'end' handler (legacy behavior preserved).
+            await startDashboardSession({
+                interaction,
+                embeds: [embed],
+                components,
+                selectMenuId: `${DASHBOARD_CUSTOM_ID}:${interaction.guildId}`,
+                buttonMatcher: `${WIZARD_BUTTON_ID}:${interaction.guildId}`,
+                onSelect: async (componentInteraction) => {
+                    try {
                         const selected = componentInteraction.values[0];
                         await showSettingModal(componentInteraction, interaction.guildId, selected);
                         await handleSettingModalSubmit(
@@ -667,14 +654,33 @@ export default {
                             interaction.guildId,
                             interaction.client,
                         );
+                    } catch (error) {
+                        logger.error('Config dashboard interaction error:', error);
+                        await replyUserError(componentInteraction, {
+                            type: ErrorTypes.UNKNOWN,
+                            message: 'Failed to process your selection. Please try again.',
+                        }).catch(() => {});
                     }
-                } catch (error) {
-                    logger.error('Config dashboard interaction error:', error);
-                    await replyUserError(componentInteraction, {
-                        type: ErrorTypes.UNKNOWN,
-                        message: 'Failed to process your selection. Please try again.',
-                    }).catch(() => {});
-                }
+                },
+                onButton: async (componentInteraction) => {
+                    try {
+                        await componentInteraction.deferUpdate();
+
+                        if (componentInteraction.customId.startsWith(`${WIZARD_BUTTON_ID}:`)) {
+                            const latestConfig = await getGuildConfig(interaction.client, interaction.guildId);
+                            await runSetupWizard(componentInteraction, latestConfig, interaction.guild, interaction.client, interaction);
+                        }
+                    } catch (error) {
+                        logger.error('Config dashboard interaction error:', error);
+                        await replyUserError(componentInteraction, {
+                            type: ErrorTypes.UNKNOWN,
+                            message: 'Failed to process your selection. Please try again.',
+                        }).catch(() => {});
+                    }
+                },
+                onTimeout: async () => {
+                    // Intentionally silent (legacy behavior).
+                },
             });
         } catch (error) {
             logger.error('Config command error:', error);

@@ -11,6 +11,7 @@ import {
     ButtonStyle
 } from 'discord.js';
 import { InteractionHelper } from '../../../utils/interactionHelper.js';
+import { startDashboardSession } from '../../../utils/dashboardSession.js';
 import { successEmbed } from '../../../utils/embeds.js';
 import { logger } from '../../../utils/logger.js';
 import { HiosBotError, ErrorTypes, replyUserError } from '../../../utils/errorHandler.js';
@@ -89,70 +90,67 @@ export default {
 
         const row = new ActionRowBuilder().addComponents(selectMenu);
 
-        await InteractionHelper.safeEditReply(interaction, {
+        // Shared dashboard lifecycle: collector filter + error handling live
+        // in startDashboardSession. NOTE: timeout standardized to the shared
+        // 600_000 default — the old 60_000 here was almost certainly not
+        // intentional (audit P3).
+        await startDashboardSession({
+            interaction,
             embeds: [embed],
             components: [row],
-        }).catch(error => {
-            logger.error('Failed to edit reply in config_setup:', error);
-        });
+            selectMenuId: `jointocreate_config_${triggerChannel.id}`,
+            onSelect: async (selectInteraction) => {
+                await selectInteraction.deferUpdate();
 
-        const collector = interaction.channel.createMessageComponentCollector({
-            componentType: ComponentType.StringSelect,
-            filter: (i) => i.user.id === interaction.user.id && i.customId === `jointocreate_config_${triggerChannel.id}`,
-time: 60000
-        });
+                const selectedOption = selectInteraction.values[0];
 
-        collector.on('collect', async (selectInteraction) => {
-            await selectInteraction.deferUpdate();
-
-            const selectedOption = selectInteraction.values[0];
-
-            try {
-                switch (selectedOption) {
-                    case 'name_template':
-                        await handleNameTemplateChange(selectInteraction, triggerChannel, currentConfig, client);
-                        break;
-                    case 'user_limit':
-                        await handleUserLimitChange(selectInteraction, triggerChannel, currentConfig, client);
-                        break;
-                    case 'bitrate':
-                        await handleBitrateChange(selectInteraction, triggerChannel, currentConfig, client);
-                        break;
-                    case 'remove_trigger':
-                        await handleRemoveTrigger(selectInteraction, triggerChannel, currentConfig, client);
-                        break;
-                    case 'view_settings':
-                        await handleViewSettings(selectInteraction, triggerChannel, currentConfig, client);
-                        break;
-                }
-            } catch (error) {
-                if (error instanceof HiosBotError) {
-                    logger.debug(`Configuration validation error: ${error.message}`, error.context || {});
-                } else {
-                    logger.error('Unexpected configuration menu error:', error);
-                }
+                try {
+                    switch (selectedOption) {
+                        case 'name_template':
+                            await handleNameTemplateChange(selectInteraction, triggerChannel, currentConfig, client);
+                            break;
+                        case 'user_limit':
+                            await handleUserLimitChange(selectInteraction, triggerChannel, currentConfig, client);
+                            break;
+                        case 'bitrate':
+                            await handleBitrateChange(selectInteraction, triggerChannel, currentConfig, client);
+                            break;
+                        case 'remove_trigger':
+                            await handleRemoveTrigger(selectInteraction, triggerChannel, currentConfig, client);
+                            break;
+                        case 'view_settings':
+                            await handleViewSettings(selectInteraction, triggerChannel, currentConfig, client);
+                            break;
+                    }
+                } catch (error) {
+                    if (error instanceof HiosBotError) {
+                        logger.debug(`Configuration validation error: ${error.message}`, error.context || {});
+                    } else {
+                        logger.error('Unexpected configuration menu error:', error);
+                    }
                 
-                const errorMessage = error instanceof HiosBotError 
-                    ? error.userMessage || 'An error occurred while processing your selection.'
-                    : 'An error occurred while processing your selection.';
+                    const errorMessage = error instanceof HiosBotError 
+                        ? error.userMessage || 'An error occurred while processing your selection.'
+                        : 'An error occurred while processing your selection.';
                     
-                await replyUserError(selectInteraction, {
-                    type: ErrorTypes.CONFIGURATION,
-                    message: errorMessage
-                }).catch(() => {});
-            }
-        });
-
-        collector.on('end', async (collected, reason) => {
-            if (reason === 'time') {
+                    await replyUserError(selectInteraction, {
+                        type: ErrorTypes.CONFIGURATION,
+                        message: errorMessage
+                    }).catch(() => {});
+                }
+            },
+            // Preserve legacy timeout UX: disable the select in place instead
+            // of the shared "Dashboard Timed Out" embed. (startDashboardSession
+            // only calls onTimeout when the collector ended on 'time'.)
+            onTimeout: async () => {
                 const disabledRow = new ActionRowBuilder().addComponents(
                     selectMenu.setDisabled(true)
                 );
-                
+
                 await InteractionHelper.safeEditReply(interaction, {
                     components: [disabledRow],
                 }).catch(() => {});
-            }
+            },
         });
             } catch (error) {
             if (error instanceof HiosBotError) {
