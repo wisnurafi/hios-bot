@@ -449,7 +449,12 @@ async function handleRoleRewardRemove(selectInteraction, rootInteraction, cfg, g
             })
             .catch(() => null);
 
-        if (!picked) return;
+        if (!picked) {
+            // Disable the picker on timeout — otherwise it sits dead and every
+            // click after this shows "interaction failed" to the admin.
+            await pickMsg.edit({ components: [] }).catch(() => {});
+            return;
+        }
 
         const removedId = picked.values[0];
         const remaining = roles.filter((id) => id !== removedId);

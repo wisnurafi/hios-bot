@@ -178,6 +178,35 @@ class DatabaseWrapper {
         return this.db.list(prefix);
     }
 
+    /**
+     * Top-N users by total XP for a guild. Delegates to PostgreSQL's single
+     * indexed query when available; falls back to list+get+sort in memory
+     * while degraded (transient, small dataset — acceptable there).
+     */
+    async getTopUserLevels(guildId, limit = 10) {
+        if (!this.useFallback && typeof this.db.getTopUserLevels === 'function') {
+            return this.db.getTopUserLevels(guildId, limit);
+        }
+
+        const prefix = `guild:${guildId}:leveling:users:`;
+        const keys = await this.db.list(prefix);
+        const rows = [];
+        for (const key of keys) {
+            const data = await this.db.get(key);
+            if (data && (Number(data.totalXp) > 0 || Number(data.level) > 0)) {
+                rows.push({
+                    userId: String(key).slice(prefix.length),
+                    xp: Math.max(0, Number(data.xp) || 0),
+                    level: Math.max(0, Number(data.level) || 0),
+                    totalXp: Math.max(0, Number(data.totalXp) || 0),
+                });
+            }
+        }
+        rows.sort((a, b) => b.totalXp - a.totalXp);
+        const safeLimit = Math.min(Math.max(Number.isInteger(limit) ? limit : 10, 1), 100);
+        return rows.slice(0, safeLimit);
+    }
+
     async exists(key) {
         if (this.db.exists) {
             return this.db.exists(key);

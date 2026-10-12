@@ -76,33 +76,36 @@ export async function getLeaderboard(client, guildId, limit = 10) {
       logger.warn(`Guild ${guildId} not found in cache`);
       return [];
     }
-    
-    const members = await guild.members.fetch().catch(error => {
-      logger.error(`Failed to fetch members for guild ${guildId}:`, error);
-      return new Map();
-    });
+
+    // Single indexed query (guild_id, total_xp DESC) — no full member fetch,
+    // no N+1 per-user queries.
+    const topRows = await client.db.getTopUserLevels(guildId, limit);
 
     const leaderboard = [];
-    
-    for (const [userId, member] of members) {
-      if (member.user.bot) continue;
-      
-      const data = await getUserLevelData(client, guildId, userId);
-      if (data && (data.totalXp > 0 || data.level > 0)) {
-        leaderboard.push({
-          userId,
-          username: member.user.username,
-          discriminator: member.user.discriminator,
-          ...data
-        });
+    let rank = 0;
+
+    for (const row of topRows) {
+      // Resolve display name from member cache first (warm via GuildMembers
+      // intent); single fetch only on cache miss. Users who left the guild
+      // are skipped, matching the old behavior.
+      let member = guild.members.cache.get(row.userId);
+      if (!member) {
+        member = await guild.members.fetch(row.userId).catch(() => null);
       }
+      if (!member || member.user.bot) continue;
+
+      rank++;
+      leaderboard.push({
+        userId: row.userId,
+        username: member.user.username,
+        discriminator: member.user.discriminator,
+        xp: row.xp,
+        level: row.level,
+        totalXp: row.totalXp,
+        lastMessage: 0,
+        rank,
+      });
     }
-    
-    leaderboard.sort((a, b) => b.totalXp - a.totalXp);
-    
-    leaderboard.forEach((entry, index) => {
-      entry.rank = index + 1;
-    });
     
     return leaderboard.slice(0, limit);
     

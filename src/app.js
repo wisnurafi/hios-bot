@@ -23,8 +23,10 @@ class HiosBot extends Client {
         GatewayIntentBits.Guilds,                        
         GatewayIntentBits.GuildMembers,                 
 
-        GatewayIntentBits.GuildMessages,                
-        GatewayIntentBits.GuildMessageReactions,        
+        GatewayIntentBits.GuildMessages,
+        // NOTE: GuildMessageReactions removed (2026-10-12) — no reaction
+        // listeners anywhere in src/ (reaction roles are component-based).
+        // Requesting it only wastes gateway traffic on high-volume events.
         GatewayIntentBits.MessageContent,               
         GatewayIntentBits.DirectMessages,
 

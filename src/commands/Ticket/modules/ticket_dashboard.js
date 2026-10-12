@@ -513,9 +513,12 @@ async function handleStaffRole(selectInteraction, rootInteraction, guildConfig, 
 
     roleCollector.on('end', (collected, reason) => {
         if (reason === 'time' && collected.size === 0) {
-            replyUserError(selectInteraction, {
-                type: ErrorTypes.RATE_LIMIT,
-                message: 'No role was selected. The staff role was not changed.',
+            // NOTE: selectInteraction was deferUpdate()'d, so replyUserError
+            // would take the editReply branch and overwrite the dashboard
+            // message. A quiet ephemeral followUp is the correct UX here.
+            selectInteraction.followUp({
+                embeds: [infoEmbed('Timed out', 'No role was selected. The staff role was not changed.')],
+                flags: MessageFlags.Ephemeral,
             }).catch(() => {});
         }
     });
@@ -573,9 +576,12 @@ async function handleOpenCategory(selectInteraction, rootInteraction, guildConfi
 
     catCollector.on('end', (collected, reason) => {
         if (reason === 'time' && collected.size === 0) {
-            replyUserError(selectInteraction, {
-                type: ErrorTypes.RATE_LIMIT,
-                message: 'No category was selected. The setting was not changed.',
+            // NOTE: selectInteraction was deferUpdate()'d, so replyUserError
+            // would take the editReply branch and overwrite the dashboard
+            // message. A quiet ephemeral followUp is the correct UX here.
+            selectInteraction.followUp({
+                embeds: [infoEmbed('Timed out', 'No category was selected. The setting was not changed.')],
+                flags: MessageFlags.Ephemeral,
             }).catch(() => {});
         }
     });
@@ -633,9 +639,12 @@ async function handleClosedCategory(selectInteraction, rootInteraction, guildCon
 
     catCollector.on('end', (collected, reason) => {
         if (reason === 'time' && collected.size === 0) {
-            replyUserError(selectInteraction, {
-                type: ErrorTypes.RATE_LIMIT,
-                message: 'No category was selected. The setting was not changed.',
+            // NOTE: selectInteraction was deferUpdate()'d, so replyUserError
+            // would take the editReply branch and overwrite the dashboard
+            // message. A quiet ephemeral followUp is the correct UX here.
+            selectInteraction.followUp({
+                embeds: [infoEmbed('Timed out', 'No category was selected. The setting was not changed.')],
+                flags: MessageFlags.Ephemeral,
             }).catch(() => {});
         }
     });
@@ -762,9 +771,12 @@ async function handleLogsChannel(selectInteraction, rootInteraction, guildConfig
 
     collector.on('end', (collected, reason) => {
         if (reason === 'time' && collected.size === 0) {
-            replyUserError(selectInteraction, {
-                type: ErrorTypes.RATE_LIMIT,
-                message: 'No channel selected. No changes were made.',
+            // NOTE: selectInteraction was deferUpdate()'d, so replyUserError
+            // would take the editReply branch and overwrite the dashboard
+            // message. A quiet ephemeral followUp is the correct UX here.
+            selectInteraction.followUp({
+                embeds: [infoEmbed('Timed out', 'No channel selected. No changes were made.')],
+                flags: MessageFlags.Ephemeral,
             }).catch(() => {});
         }
     });
@@ -814,9 +826,12 @@ async function handleTranscriptChannel(selectInteraction, rootInteraction, guild
 
     collector.on('end', (collected, reason) => {
         if (reason === 'time' && collected.size === 0) {
-            replyUserError(selectInteraction, {
-                type: ErrorTypes.RATE_LIMIT,
-                message: 'No channel selected. No changes were made.',
+            // NOTE: selectInteraction was deferUpdate()'d, so replyUserError
+            // would take the editReply branch and overwrite the dashboard
+            // message. A quiet ephemeral followUp is the correct UX here.
+            selectInteraction.followUp({
+                embeds: [infoEmbed('Timed out', 'No channel selected. No changes were made.')],
+                flags: MessageFlags.Ephemeral,
             }).catch(() => {});
         }
     });
@@ -879,9 +894,12 @@ async function handleCheckUser(selectInteraction, rootInteraction, guildConfig, 
 
     userCollector.on('end', (collected, reason) => {
         if (reason === 'time' && collected.size === 0) {
-            replyUserError(selectInteraction, {
-                type: ErrorTypes.RATE_LIMIT,
-                message: 'No user was selected.',
+            // NOTE: selectInteraction was deferUpdate()'d, so replyUserError
+            // would take the editReply branch and overwrite the dashboard
+            // message. A quiet ephemeral followUp is the correct UX here.
+            selectInteraction.followUp({
+                embeds: [infoEmbed('Timed out', 'No user was selected.')],
+                flags: MessageFlags.Ephemeral,
             }).catch(() => {});
         }
     });

@@ -535,6 +535,45 @@ class PostgreSQLDatabase {
         }
     }
 
+    /**
+     * Top-N users by total XP for a guild in a single query.
+     * Replaces the old getLeaderboard pattern (full member fetch + N+1 gets).
+     */
+    async getTopUserLevels(guildId, limit = 10) {
+        try {
+            if (!this.isAvailable()) {
+                logger.warn('PostgreSQL not available, cannot get top user levels');
+                return [];
+            }
+
+            const safeLimit = Math.min(Math.max(Number.isInteger(limit) ? limit : 10, 1), 100);
+            assertAllowlistedIdentifier(
+                pgConfig.tables.user_levels,
+                this.allowedTableIdentifiers,
+                'getTopUserLevels'
+            );
+
+            const result = await this.pool.query(
+                `SELECT user_id, xp, level, total_xp
+                 FROM ${pgConfig.tables.user_levels}
+                 WHERE guild_id = $1 AND total_xp > 0
+                 ORDER BY total_xp DESC
+                 LIMIT $2`,
+                [String(guildId), safeLimit]
+            );
+
+            return result.rows.map((row) => ({
+                userId: row.user_id,
+                xp: Number(row.xp) || 0,
+                level: Number(row.level) || 0,
+                totalXp: Number(row.total_xp) || 0,
+            }));
+        } catch (error) {
+            logger.error(`Error getting top user levels for guild ${guildId}:`, error);
+            return [];
+        }
+    }
+
     async insertVerificationAudit(record) {
         try {
             if (!this.isAvailable()) {

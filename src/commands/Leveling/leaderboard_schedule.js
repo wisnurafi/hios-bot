@@ -352,7 +352,12 @@ async function handleDay(selectInteraction, rootInteraction, cfg, guildId, clien
             time: 60_000,
         })
         .catch(() => null);
-    if (!picked) return;
+    if (!picked) {
+        // Disable the picker on timeout — otherwise it sits dead and every
+        // click after this shows "interaction failed" to the admin.
+        await dayMsg.edit({ components: [] }).catch(() => {});
+        return;
+    }
 
     const day = Number(picked.values[0]);
     const updated = { ...getSchedSettings(cfg), day };

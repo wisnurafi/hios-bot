@@ -4,6 +4,43 @@ import { normalizeGuildConfig, validateGuildConfigOrThrow } from '../schemas.js'
 import { createError, ErrorTypes } from '../errorHandler.js';
 import { getGuildConfigKey } from './keys.js';
 
+/**
+ * In-memory guild config cache. Guild config is read on hot paths
+ * (every message for leveling, every voiceStateUpdate, every logEvent)
+ * but changes rarely, so a short TTL cache removes 4-5 sequential DB
+ * round trips per message. Invalidated on every write below.
+ */
+const GUILD_CONFIG_CACHE_TTL_MS = 45_000;
+const GUILD_CONFIG_CACHE_MAX = 1000;
+const guildConfigCache = new Map(); // guildId -> { config, expiresAt }
+
+function getCachedGuildConfig(guildId) {
+    const entry = guildConfigCache.get(guildId);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+        guildConfigCache.delete(guildId);
+        return null;
+    }
+    // structuredClone: callers must never mutate the cached object.
+    return structuredClone(entry.config);
+}
+
+function setCachedGuildConfig(guildId, config) {
+    if (guildConfigCache.size >= GUILD_CONFIG_CACHE_MAX) {
+        // Evict oldest (Map preserves insertion order).
+        const oldest = guildConfigCache.keys().next();
+        if (!oldest.done) guildConfigCache.delete(oldest.value);
+    }
+    guildConfigCache.set(guildId, {
+        config: structuredClone(config),
+        expiresAt: Date.now() + GUILD_CONFIG_CACHE_TTL_MS,
+    });
+}
+
+function invalidateGuildConfigCache(guildId) {
+    guildConfigCache.delete(guildId);
+}
+
 export function unwrapReplitData(data) {
     if (
         typeof data === 'object' &&
@@ -35,14 +72,23 @@ export async function readGuildConfig(client, guildId, context = {}) {
             return normalizeGuildConfig({}, GUILD_CONFIG_DEFAULTS);
         }
 
+        const cached = getCachedGuildConfig(guildId);
+        if (cached) {
+            return cached;
+        }
+
         const rawConfig = await client.db.get(getGuildConfigKey(guildId), null);
 
         if (rawConfig === null) {
-            return normalizeGuildConfig({}, GUILD_CONFIG_DEFAULTS);
+            const defaults = normalizeGuildConfig({}, GUILD_CONFIG_DEFAULTS);
+            setCachedGuildConfig(guildId, defaults);
+            return structuredClone(defaults);
         }
 
         const cleanedConfig = unwrapReplitData(rawConfig);
-        return normalizeGuildConfig(cleanedConfig, GUILD_CONFIG_DEFAULTS);
+        const normalized = normalizeGuildConfig(cleanedConfig, GUILD_CONFIG_DEFAULTS);
+        setCachedGuildConfig(guildId, normalized);
+        return structuredClone(normalized);
     } catch (error) {
         logger.error(`Error fetching config for guild ${guildId}`, {
             error,
@@ -79,6 +125,8 @@ export async function writeGuildConfig(client, guildId, config, context = {}) {
             { guildId, ...context },
         );
     }
+
+    invalidateGuildConfigCache(guildId);
 
     return validated;
 }

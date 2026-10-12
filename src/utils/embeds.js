@@ -84,7 +84,9 @@ function isImportantFooter(footerText) {
   }
 
   const normalized = footerText.toLowerCase();
-  return /\b(close|closes|closed|expire|expires|available in|page\s+\d+|dashboard closes|ticket id)\b/.test(normalized);
+  // NOTE: audit/pagination footers (Logger ID, Total cases, Filter) MUST pass —
+  // they carry real information, unlike decorative branding footers.
+  return /\b(close|closes|closed|expire|expires|available in|page\s+\d+|dashboard closes|ticket id|logger id|total cases|filter:)\b/.test(normalized);
 }
 
 const originalSetDescription = EmbedBuilder.prototype.setDescription;
