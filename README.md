@@ -30,6 +30,8 @@ hios-bot offers a focused set of tools for Discord server management:
 - **Mass Actions** - Bulk ban/kick capabilities
 - **User Notes** - Keep detailed moderation records
 - **Case Management** - View and track all mod actions
+- **Command Lockdown** - Restrict where and by whom slash commands can be used (`/control`)
+- **Webhook Manager** - Create, rename, move and test bot webhooks from one dashboard (`/webhook dashboard`)
 
 ### TempVoice (Join to Create)
 - **Auto Voice Rooms** - Temporary voice channels on demand
@@ -57,6 +59,7 @@ hios-bot offers a focused set of tools for Discord server management:
 - **XP Tracking** - Automatic message-based XP
 - **Level Roles** - Auto-assign roles by level
 - **Custom Configuration** - Personalize leveling
+- **Scheduled Leaderboard** - Auto-posts Top 15 of the last 2 weeks + All Time Top 5 every 2 weeks (`/leaderboard-schedule`)
 
 ### Verification
 - **Verify Gate** - Verification flow for new members
