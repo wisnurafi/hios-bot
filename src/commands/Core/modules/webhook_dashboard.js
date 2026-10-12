@@ -39,16 +39,18 @@ const DASHBOARD_TIMEOUT_MS = 10 * 60 * 1000;
 const UPLOAD_TIMEOUT_MS = 60 * 1000;
 const CID = (...parts) => `wh_dash_${parts.join(':')}`;
 
-// Pending multi-step state, keyed by `${guildId}:${userId}`.
+// Pending multi-step state, keyed by `${guildId}:${userId}:${messageId}`.
+// The message id scopes the session to one dashboard instance so two
+// parallel dashboards can't overwrite each other's create flow.
 // Entries auto-expire after 5 minutes so abandoned flows don't linger.
 const sessions = new Map();
 
-function sessionKey(guildId, userId) {
-  return `${guildId}:${userId}`;
+function sessionKey(guildId, userId, messageId) {
+  return `${guildId}:${userId}:${messageId || '?'}`;
 }
 
-function setSession(guildId, userId, value) {
-  const key = sessionKey(guildId, userId);
+function setSession(guildId, userId, messageId, value) {
+  const key = sessionKey(guildId, userId, messageId);
   const existing = sessions.get(key);
   if (existing?.timer) {
     clearTimeout(existing.timer);
@@ -58,12 +60,12 @@ function setSession(guildId, userId, value) {
   sessions.set(key, { ...value, timer });
 }
 
-function getSession(guildId, userId) {
-  return sessions.get(sessionKey(guildId, userId)) || null;
+function getSession(guildId, userId, messageId) {
+  return sessions.get(sessionKey(guildId, userId, messageId)) || null;
 }
 
-function clearSession(guildId, userId) {
-  const key = sessionKey(guildId, userId);
+function clearSession(guildId, userId, messageId) {
+  const key = sessionKey(guildId, userId, messageId);
   const existing = sessions.get(key);
   if (existing?.timer) {
     clearTimeout(existing.timer);
@@ -379,7 +381,7 @@ async function handleCreateModal(interaction, guildId, userId) {
   }
   const avatarUrl = (submitted.fields.getTextInputValue('avatarUrl') || '').trim();
 
-  setSession(guildId, userId, { name, avatarUrl });
+  setSession(guildId, userId, interaction.message?.id, { name, avatarUrl });
 
   await submitted.deferUpdate().catch(() => {});
   await interaction.editReply(
@@ -393,7 +395,7 @@ async function handleCreateModal(interaction, guildId, userId) {
 
 async function handleCreateChannel(interaction, client, guildId, userId) {
   const channelId = interaction.values?.[0];
-  const session = getSession(guildId, userId);
+  const session = getSession(guildId, userId, interaction.message?.id);
   if (!channelId || !session) {
     await ephemeralError(interaction, 'Session expired. Please start over.');
     return;
@@ -439,7 +441,7 @@ async function handleCreateChannel(interaction, client, guildId, userId) {
   const records = await loadRecords(guildId);
   records.push(record);
   await saveRecords(guildId, records);
-  clearSession(guildId, userId);
+  clearSession(guildId, userId, interaction.message?.id);
 
   logger.info(`Managed webhook created: ${record.name} in #${channel.name}`, {
     event: 'webhook.created',
@@ -801,7 +803,7 @@ async function routeComponent(interaction, client, guildId, userId) {
     case 'close':
       // Deleting the message does NOT ack the interaction — defer first.
       await interaction.deferUpdate().catch(() => {});
-      clearSession(guildId, userId);
+      clearSession(guildId, userId, interaction.message?.id);
       await interaction.message?.delete().catch(() => {});
       return;
     case 'back': {
@@ -946,9 +948,9 @@ export async function openWebhookDashboard(rootInteraction) {
   });
 
   collector.on('end', async () => {
-    clearSession(guildId, userId);
     // Auto-close: remove the ephemeral dashboard.
     const msg = await rootInteraction.fetchReply().catch(() => null);
+    clearSession(guildId, userId, msg?.id);
     await msg?.delete().catch(() => {});
   });
 }
