@@ -8,7 +8,7 @@ import {
 } from '../utils/database.js';
 import { sanitizeInput } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
-import { enforceWaitingRoom } from '../services/tempvoiceInterface.js';
+import { enforceWaitingRoom, OWNER_OVERWRITES } from '../services/tempvoiceInterface.js';
 
 const channelCreationCooldown = new Map();
 const VOICE_CREATE_COOLDOWN_MS = 2000;
@@ -211,7 +211,8 @@ userLimit: userLimit === 0 ? undefined : userLimit,
                     permissionOverwrites: [
                         {
                             id: member.id,
-                            allow: ['Connect', 'Speak', 'PrioritySpeaker', 'MoveMembers']
+                            // Single source of truth: OWNER_OVERWRITES (services/tempvoiceInterface.js)
+                            allow: Object.keys(OWNER_OVERWRITES)
                         },
                         {
                             id: guild.id,

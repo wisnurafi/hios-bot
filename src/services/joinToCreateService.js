@@ -10,6 +10,7 @@ import {
 import { logger } from '../utils/logger.js';
 import { HiosBotError, ErrorTypes } from '../utils/errorHandler.js';
 import { logEvent, EVENT_TYPES } from './loggingService.js';
+import { OWNER_OVERWRITES } from './tempvoiceInterface.js';
 import { formatLogLine } from '../utils/logging/logEmbeds.js';
 import { ChannelType, PermissionFlagsBits } from 'discord.js';
 
@@ -521,7 +522,8 @@ export async function createTemporaryChannel(guild, member, options = {}) {
             permissionOverwrites: [
                 {
                     id: member.id,
-                    allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak, PermissionFlagsBits.PrioritySpeaker, PermissionFlagsBits.MoveMembers]
+                    // Single source of truth: OWNER_OVERWRITES (./tempvoiceInterface.js)
+                    allow: Object.keys(OWNER_OVERWRITES).map((k) => PermissionFlagsBits[k])
                 },
                 {
                     id: guild.id,

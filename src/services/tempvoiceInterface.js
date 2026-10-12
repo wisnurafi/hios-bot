@@ -42,11 +42,15 @@ export const INTERFACE_CHANNEL_NAME = 'interface';
 const WAITING_ROOM_NAME = 'Waiting Room';
 const MAX_CHANNEL_NAME_LENGTH = 100;
 
-const OWNER_OVERWRITES = {
+// Owner permission overwrites for temp voice channels — the single source of
+// truth, reused at creation (voiceStateUpdate.js, joinToCreateService.js) and
+// on ownership change (swapOwnerOverwrites below for claim/transfer).
+export const OWNER_OVERWRITES = {
     Connect: true,
     Speak: true,
     PrioritySpeaker: true,
     MoveMembers: true,
+    ViewChannel: true, // owner must always see the room, even when hidden
 };
 
 // ---------------------------------------------------------------------------
@@ -60,18 +64,21 @@ const PANEL_BUTTONS = [
         { id: 'name', label: 'NAME', icon: 'name', emoji: '🏷️', style: ButtonStyle.Secondary },
         { id: 'limit', label: 'LIMIT', icon: 'limit', emoji: '🔢', style: ButtonStyle.Secondary },
         { id: 'privacy', label: 'PRIVACY', icon: 'privacy', emoji: '🔒', style: ButtonStyle.Secondary },
-        { id: 'waitingroom', label: 'WAITING ROOM', icon: 'waitingroom', emoji: '🚪', style: ButtonStyle.Secondary },
-        { id: 'chat', label: 'CHAT', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
+        { id: 'visibility', label: 'VISIBILITY', icon: 'visibility', emoji: '👁️', style: ButtonStyle.Secondary },
     ],
     [
+        { id: 'waitingroom', label: 'WAITING ROOM', icon: 'waitingroom', emoji: '🚪', style: ButtonStyle.Secondary },
+        { id: 'chat', label: 'CHAT', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
         { id: 'trust', label: 'TRUST', icon: 'trust', emoji: '✅', style: ButtonStyle.Secondary },
         { id: 'untrust', label: 'UNTRUST', icon: 'untrust', emoji: '❌', style: ButtonStyle.Secondary },
+    ],
+    [
         { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Secondary },
         { id: 'kick', label: 'KICK', icon: 'kick', emoji: '🦵', style: ButtonStyle.Secondary },
         { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
+        { id: 'block', label: 'BLOCK', icon: 'block', emoji: '⛔', style: ButtonStyle.Secondary },
     ],
     [
-        { id: 'block', label: 'BLOCK', icon: 'block', emoji: '⛔', style: ButtonStyle.Secondary },
         { id: 'unblock', label: 'UNBLOCK', icon: 'unblock', emoji: '🔓', style: ButtonStyle.Secondary },
         { id: 'claim', label: 'CLAIM', icon: 'claim', emoji: '👑', style: ButtonStyle.Secondary },
         { id: 'transfer', label: 'TRANSFER', icon: 'transfer', emoji: '🔄', style: ButtonStyle.Secondary },
@@ -249,6 +256,7 @@ export function normalizeTempInfo(raw) {
         trusted: Array.isArray(info.trusted) ? info.trusted.filter((id) => typeof id === 'string') : [],
         blocked: Array.isArray(info.blocked) ? info.blocked.filter((id) => typeof id === 'string') : [],
         locked: info.locked === true,
+        hidden: info.hidden === true,
         chatEnabled: info.chatEnabled !== false,
         waitingRoom: info.waitingRoom && typeof info.waitingRoom === 'object' ? info.waitingRoom : null,
     };
@@ -498,12 +506,12 @@ async function showRenameModal(interaction, client) {
         new ActionRowBuilder().addComponents(
             new TextInputBuilder()
                 .setCustomId('channel_name')
-                .setLabel('New channel name')
+                .setLabel('New channel name (empty = reset)')
                 .setStyle(TextInputStyle.Short)
                 .setPlaceholder(ctx.channel.name)
-                .setMinLength(1)
+                .setMinLength(0)
                 .setMaxLength(MAX_CHANNEL_NAME_LENGTH)
-                .setRequired(true)
+                .setRequired(false)
         )
     );
 
@@ -557,6 +565,40 @@ async function togglePrivacy(interaction, client) {
     } catch (error) {
         logger.error(`TempVoice togglePrivacy failed: ${error.message}`);
         await InteractionHelper.safeEditReply(interaction, { content: '❌ Failed to change privacy. Check my permissions and try again.' });
+    }
+}
+
+async function toggleVisibility(interaction, client) {
+    const ctx = await getOwnerContext(interaction, client);
+    if (!ctx) return;
+    await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
+
+    const { channel, info } = ctx;
+    try {
+        if (info.hidden) {
+            await channel.permissionOverwrites.edit(channel.guild.id, { ViewChannel: null });
+            for (const userId of info.trusted) {
+                await channel.permissionOverwrites.edit(userId, { ViewChannel: null }).catch(() => {});
+            }
+            await updateTempState(client, channel.guild.id, channel.id, { hidden: false });
+            await InteractionHelper.safeEditReply(interaction, {
+                content: '👁️ **Channel is now visible** — everyone can see it again.',
+            });
+        } else {
+            await channel.permissionOverwrites.edit(channel.guild.id, { ViewChannel: false });
+            // Owner always keeps ViewChannel (also set at creation); trusted users can see too.
+            for (const userId of [info.ownerId, ...info.trusted]) {
+                if (!userId) continue;
+                await channel.permissionOverwrites.edit(userId, { ViewChannel: true }).catch(() => {});
+            }
+            await updateTempState(client, channel.guild.id, channel.id, { hidden: true });
+            await InteractionHelper.safeEditReply(interaction, {
+                content: '👁️ **Channel is now hidden** — only you and trusted users can see it.\nUse TRUST to let specific people in.',
+            });
+        }
+    } catch (error) {
+        logger.error(`TempVoice toggleVisibility failed: ${error.message}`);
+        await InteractionHelper.safeEditReply(interaction, { content: '❌ Failed to change visibility. Check my permissions and try again.' });
     }
 }
 
@@ -873,6 +915,7 @@ const BUTTON_ACTIONS = {
     name: showRenameModal,
     limit: showLimitModal,
     privacy: togglePrivacy,
+    visibility: toggleVisibility,
     waitingroom: toggleWaitingRoom,
     chat: toggleChat,
     trust: sendTrustPicker,
@@ -905,6 +948,14 @@ export async function dispatchTempVoiceButton(interaction, client, action) {
 // Select menu actions (dispatched from src/interactions/selectMenus/tempvoice/)
 // ---------------------------------------------------------------------------
 
+// Grant a trusted user access: Connect always, plus ViewChannel while the room is hidden.
+async function grantTrustedAccess(channel, userId, hidden) {
+    await channel.permissionOverwrites.edit(userId, {
+        Connect: true,
+        ...(hidden ? { ViewChannel: true } : {}),
+    });
+}
+
 async function selectTrust(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
@@ -921,11 +972,11 @@ async function selectTrust(interaction, client) {
         }
 
         const trusted = info.trusted.includes(userId) ? info.trusted : [...info.trusted, userId];
-        await channel.permissionOverwrites.edit(userId, { Connect: true });
+        await grantTrustedAccess(channel, userId, info.hidden);
         await updateTempState(client, channel.guild.id, channel.id, { trusted });
 
         await InteractionHelper.safeEditReply(interaction, {
-            content: `🤝 **${member.displayName}** is now trusted — they can join even when the channel is locked.`,
+            content: `🤝 **${member.displayName}** is now trusted — they can join even when the channel is locked${info.hidden ? ' and can see it while hidden' : ''}.`,
             components: [],
         });
     } catch (error) {
@@ -975,7 +1026,7 @@ async function selectInvite(interaction, client) {
 
         // Invited users bypass the waiting room, so mark them trusted first.
         const trusted = info.trusted.includes(userId) ? info.trusted : [...info.trusted, userId];
-        await channel.permissionOverwrites.edit(userId, { Connect: true });
+        await grantTrustedAccess(channel, userId, info.hidden);
         await updateTempState(client, channel.guild.id, channel.id, { trusted });
 
         if (member.voice.channel) {
@@ -1055,7 +1106,12 @@ async function selectBlock(interaction, client) {
 
         const blocked = info.blocked.includes(userId) ? info.blocked : [...info.blocked, userId];
         const trusted = info.trusted.filter((id) => id !== userId);
-        await channel.permissionOverwrites.edit(userId, { Connect: false });
+        // If the room is hidden, also strip the ViewChannel grant so a blocked
+        // ex-trusted user can no longer see it.
+        await channel.permissionOverwrites.edit(userId, {
+            Connect: false,
+            ...(info.hidden ? { ViewChannel: null } : {}),
+        });
 
         if (member.voice.channel?.id === channel.id) {
             await member.voice.disconnect('Blocked via TempVoice interface').catch(() => {});
@@ -1162,15 +1218,17 @@ async function submitRename(interaction, client) {
     const rawName = interaction.fields.getTextInputValue('channel_name');
     const newName = sanitizeChannelName(rawName);
 
-    if (!newName) {
-        await InteractionHelper.safeReply(interaction, {
-            content: '❌ Channel name cannot be empty.',
-            flags: MessageFlags.Ephemeral,
-        });
-        return;
-    }
-
     try {
+        if (!newName) {
+            // Empty name = reset to the default template name.
+            await renameToTemplate(client, interaction.guild, ctx.channel, ctx.info);
+            await InteractionHelper.safeReply(interaction, {
+                content: `↩️ Channel name reset to **${ctx.channel.name}**.`,
+                flags: MessageFlags.Ephemeral,
+            });
+            return;
+        }
+
         await ctx.channel.setName(newName);
         await InteractionHelper.safeReply(interaction, {
             content: `✏️ Channel renamed to **${newName}**.`,
