@@ -20,6 +20,7 @@ import {
     StringSelectMenuBuilder,
     TextInputBuilder,
     TextInputStyle,
+    UserSelectMenuBuilder,
 } from 'discord.js';
 import {
     getJoinToCreateConfig,
@@ -678,31 +679,53 @@ async function toggleChat(interaction, client) {
     }
 }
 
+// User-select picker shared by TRUST and BLOCK: the owner can pick anyone
+// in the server — no need for them to join the voice channel first.
+async function sendUserPicker(interaction, customId, placeholder, content) {
+    const select = new UserSelectMenuBuilder()
+        .setCustomId(customId)
+        .setPlaceholder(placeholder)
+        .setMinValues(1)
+        .setMaxValues(1);
+
+    await InteractionHelper.safeReply(interaction, {
+        content,
+        components: [new ActionRowBuilder().addComponents(select)],
+        flags: MessageFlags.Ephemeral,
+    });
+}
+
 async function sendTrustPicker(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
 
-    const candidates = [...ctx.channel.members.filter(
-        (m) => m.id !== ctx.info.ownerId && !ctx.info.trusted.includes(m.id)
-    ).values()];
-    await replyPicker(
+    await sendUserPicker(
         interaction,
         'tempvoice_select:trust',
-        'Select a user to trust (they can join even when the channel is locked)',
-        memberSelectOptions(candidates)
+        'Select a user to trust',
+        'Select a user to trust — they will be able to join even when the channel is locked, and see it when hidden.'
     );
+}
+
+// Resolve a member for picker lists: cache first, then fetch. Falls back to a
+// placeholder so users who left the server can still be managed by ID.
+async function resolveListedMember(guild, id) {
+    const cached = guild.members.cache.get(id);
+    if (cached) return cached;
+    const fetched = await guild.members.fetch(id).catch(() => null);
+    if (fetched) return fetched;
+    return { id, displayName: 'Unknown user', user: { username: `id:${id}` } };
 }
 
 async function sendUntrustPicker(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
 
-    const options = memberSelectOptions(
-        ctx.info.trusted
-            .map((id) => ctx.channel.guild.members.cache.get(id))
-            .filter(Boolean)
-    );
-    await replyPicker(interaction, 'tempvoice_select:untrust', 'Select a trusted user to remove', options);
+    const members = [];
+    for (const id of ctx.info.trusted) {
+        members.push(await resolveListedMember(ctx.channel.guild, id));
+    }
+    await replyPicker(interaction, 'tempvoice_select:untrust', 'Select a trusted user to remove', memberSelectOptions(members));
 }
 
 async function sendInvitePicker(interaction, client) {
@@ -755,14 +778,11 @@ async function sendBlockPicker(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
 
-    const candidates = [...ctx.channel.members.filter(
-        (m) => m.id !== ctx.info.ownerId && !ctx.info.blocked.includes(m.id)
-    ).values()];
-    await replyPicker(
+    await sendUserPicker(
         interaction,
         'tempvoice_select:block',
-        'Select a user to block (they will be disconnected and cannot rejoin)',
-        memberSelectOptions(candidates)
+        'Select a user to block',
+        'Select a user to block — they will be disconnected and cannot rejoin.'
     );
 }
 
@@ -770,15 +790,11 @@ async function sendUnblockPicker(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
 
-    const blockedMembers = ctx.info.blocked
-        .map((id) => ctx.channel.guild.members.cache.get(id))
-        .filter(Boolean);
-    const options = blockedMembers.slice(0, 25).map((m) => ({
-        label: (m.displayName || m.user.username).substring(0, 100),
-        value: m.id,
-        description: `@${m.user.username}`.substring(0, 100),
-    }));
-    await replyPicker(interaction, 'tempvoice_select:unblock', 'Select a blocked user to unblock', options);
+    const members = [];
+    for (const id of ctx.info.blocked) {
+        members.push(await resolveListedMember(ctx.channel.guild, id));
+    }
+    await replyPicker(interaction, 'tempvoice_select:unblock', 'Select a blocked user to unblock', memberSelectOptions(members));
 }
 
 async function sendTransferPicker(interaction, client) {
@@ -970,8 +986,36 @@ async function selectTrust(interaction, client) {
             await InteractionHelper.safeEditReply(interaction, { content: '❌ User not found.', components: [] });
             return;
         }
+        if (userId === info.ownerId) {
+            await InteractionHelper.safeEditReply(interaction, {
+                content: '❌ You cannot trust yourself — you already own the channel.',
+                components: [],
+            });
+            return;
+        }
+        if (member.user.bot) {
+            await InteractionHelper.safeEditReply(interaction, {
+                content: '❌ You cannot trust a bot.',
+                components: [],
+            });
+            return;
+        }
+        if (info.trusted.includes(userId)) {
+            await InteractionHelper.safeEditReply(interaction, {
+                content: `🤝 **${member.displayName}** is already trusted.`,
+                components: [],
+            });
+            return;
+        }
+        if (info.blocked.includes(userId)) {
+            await InteractionHelper.safeEditReply(interaction, {
+                content: `❌ **${member.displayName}** is blocked — unblock them first before trusting.`,
+                components: [],
+            });
+            return;
+        }
 
-        const trusted = info.trusted.includes(userId) ? info.trusted : [...info.trusted, userId];
+        const trusted = [...info.trusted, userId];
         await grantTrustedAccess(channel, userId, info.hidden);
         await updateTempState(client, channel.guild.id, channel.id, { trusted });
 
@@ -1103,8 +1147,29 @@ async function selectBlock(interaction, client) {
             await InteractionHelper.safeEditReply(interaction, { content: '❌ User not found.', components: [] });
             return;
         }
+        if (userId === info.ownerId) {
+            await InteractionHelper.safeEditReply(interaction, {
+                content: '❌ You cannot block yourself.',
+                components: [],
+            });
+            return;
+        }
+        if (member.user.bot) {
+            await InteractionHelper.safeEditReply(interaction, {
+                content: '❌ You cannot block a bot.',
+                components: [],
+            });
+            return;
+        }
+        if (info.blocked.includes(userId)) {
+            await InteractionHelper.safeEditReply(interaction, {
+                content: `⛔ **${member.displayName}** is already blocked.`,
+                components: [],
+            });
+            return;
+        }
 
-        const blocked = info.blocked.includes(userId) ? info.blocked : [...info.blocked, userId];
+        const blocked = [...info.blocked, userId];
         const trusted = info.trusted.filter((id) => id !== userId);
         // If the room is hidden, also strip the ViewChannel grant so a blocked
         // ex-trusted user can no longer see it.
