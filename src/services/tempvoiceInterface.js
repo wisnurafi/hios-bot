@@ -64,25 +64,25 @@ const PANEL_BUTTONS = [
     [
         { id: 'name', label: 'NAME', icon: 'name', emoji: '🏷️', style: ButtonStyle.Secondary },
         { id: 'limit', label: 'LIMIT', icon: 'limit', emoji: '🔢', style: ButtonStyle.Secondary },
-        { id: 'privacy', label: 'PRIVACY', icon: 'privacy', emoji: '🔒', style: ButtonStyle.Secondary },
-        { id: 'visibility', label: 'VISIBILITY', icon: 'visibility', emoji: '👁️', style: ButtonStyle.Secondary },
-    ],
-    [
         { id: 'waitingroom', label: 'WAITING ROOM', icon: 'waitingroom', emoji: '🚪', style: ButtonStyle.Secondary },
-        { id: 'chat', label: 'CHAT', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
-        { id: 'trust', label: 'TRUST', icon: 'trust', emoji: '✅', style: ButtonStyle.Secondary },
-        { id: 'untrust', label: 'UNTRUST', icon: 'untrust', emoji: '❌', style: ButtonStyle.Secondary },
+        { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
     ],
     [
         { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Secondary },
         { id: 'kick', label: 'KICK', icon: 'kick', emoji: '🦵', style: ButtonStyle.Secondary },
-        { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
         { id: 'block', label: 'BLOCK', icon: 'block', emoji: '⛔', style: ButtonStyle.Secondary },
+        { id: 'unblock', label: 'UNBLOCK', icon: 'unblock', emoji: '🔓', style: ButtonStyle.Secondary },
     ],
     [
-        { id: 'unblock', label: 'UNBLOCK', icon: 'unblock', emoji: '🔓', style: ButtonStyle.Secondary },
+        { id: 'privacy', label: 'PRIVACY', icon: 'privacy', emoji: '🔒', style: ButtonStyle.Secondary },
+        { id: 'visibility', label: 'VISIBILITY', icon: 'visibility', emoji: '👁️', style: ButtonStyle.Secondary },
+        { id: 'trust', label: 'TRUST', icon: 'trust', emoji: '✅', style: ButtonStyle.Secondary },
+        { id: 'untrust', label: 'UNTRUST', icon: 'untrust', emoji: '❌', style: ButtonStyle.Secondary },
+    ],
+    [
         { id: 'claim', label: 'CLAIM', icon: 'claim', emoji: '👑', style: ButtonStyle.Secondary },
         { id: 'transfer', label: 'TRANSFER', icon: 'transfer', emoji: '🔄', style: ButtonStyle.Secondary },
+        { id: 'chat', label: 'CHAT', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
         { id: 'delete', label: 'DELETE', icon: 'delete', emoji: '🗑️', style: ButtonStyle.Secondary },
     ],
 ];
