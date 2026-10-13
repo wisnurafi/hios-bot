@@ -1,8 +1,8 @@
 // tempvoiceInterface.js — TempVoice-style owner control panel for Join-to-Create temp channels.
 //
-// A persistent `#interface` text channel holds one embed with 15 buttons
-// (NAME, LIMIT, PRIVACY, WAITING ROOM, CHAT / TRUST, UNTRUST, INVITE, KICK,
-// REGION / BLOCK, UNBLOCK, CLAIM, TRANSFER, DELETE). Only the recorded owner
+// A persistent `#interface` text channel holds one embed with 17 buttons
+// (NAME, LIMIT, WAITING ROOM, REGION, HELP / INVITE, KICK, BLOCK, UNBLOCK /
+// PRIVACY, VISIBILITY, TRUST, UNTRUST / CLAIM, TRANSFER, CHAT, DELETE). Only the recorded owner
 // of a temporary voice channel may use the actions; everyone else gets an
 // ephemeral denial. Dynamic pickers (member lists, regions) are served as
 // ephemeral select menus built at click time.
@@ -66,6 +66,7 @@ const PANEL_BUTTONS = [
         { id: 'limit', label: 'LIMIT', icon: 'limit', emoji: '🔢', style: ButtonStyle.Secondary },
         { id: 'waitingroom', label: 'WAITING ROOM', icon: 'waitingroom', emoji: '🚪', style: ButtonStyle.Secondary },
         { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
+        { id: 'help', label: 'HELP', icon: 'help', emoji: '❓', style: ButtonStyle.Secondary },
     ],
     [
         { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Secondary },
@@ -109,7 +110,7 @@ function interfaceAssetHash(key) {
 }
 
 /**
- * Ensure the 15 panel icons exist as custom emojis in this guild.
+ * Ensure the 17 panel icons exist as custom emojis in this guild.
  * Idempotent: reuses stored emojis that still exist, uploads only what's
  * missing. Returns a map of icon key -> emoji mention string.
  *
@@ -927,6 +928,45 @@ async function cancelDelete(interaction, client) {
     await interaction.message?.edit({ components: [] }).catch(() => {});
 }
 
+// HELP — ephemeral "how to use" guide. Plain content (no embed) so it is
+// immune to the global embed monkey-patch in src/utils/embeds.js.
+async function sendHelp(interaction, client) {
+    const ctx = await getOwnerContext(interaction, client);
+    if (!ctx) return;
+
+    await InteractionHelper.safeReply(interaction, {
+        content: [
+            '**TempVoice — How to use**',
+            'Join the "Join to Create" voice channel and you get your own temporary room. Use the buttons in #interface to control it — only you (the owner) can use them.',
+            '',
+            '**Room setup**',
+            '• **NAME** — rename your room (leave empty to reset to the default name).',
+            '• **LIMIT** — max users allowed in (0 = unlimited, max 99).',
+            '• **WAITING ROOM** — newcomers wait in a separate room until you let them in.',
+            '• **REGION** — set the voice region for better connection quality.',
+            '',
+            '**Moderation**',
+            '• **INVITE** — pull someone into your room (they become trusted automatically).',
+            '• **KICK** — disconnect someone from your room.',
+            '• **BLOCK** — disconnect someone and prevent them from rejoining.',
+            '• **UNBLOCK** — lift a block.',
+            '',
+            '**Access**',
+            '• **PRIVACY** — lock/unlock the room. When locked, only trusted users can join.',
+            '• **VISIBILITY** — hide/unhide the room. When hidden, only you and trusted users can see it.',
+            '• **TRUST** — give someone permanent access: they can join even when locked and see the room even when hidden. No need for them to join first.',
+            '• **UNTRUST** — remove someone from the trusted list.',
+            '',
+            '**Ownership**',
+            '• **CLAIM** — take ownership of a room whose owner left.',
+            '• **TRANSFER** — hand ownership to someone else.',
+            '• **CHAT** — enable/disable the text chat inside your voice channel.',
+            '• **DELETE** — delete your room (asks for confirmation first).',
+        ].join('\n'),
+        flags: MessageFlags.Ephemeral,
+    });
+}
+
 const BUTTON_ACTIONS = {
     name: showRenameModal,
     limit: showLimitModal,
@@ -943,6 +983,7 @@ const BUTTON_ACTIONS = {
     unblock: sendUnblockPicker,
     claim: claimChannel,
     transfer: sendTransferPicker,
+    help: sendHelp,
     delete: askDeleteConfirm,
     delete_confirm: confirmDelete,
     delete_cancel: cancelDelete,
