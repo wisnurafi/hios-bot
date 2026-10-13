@@ -220,7 +220,7 @@ export function buildInterfacePayload(interfaceEmojis = {}) {
         .setColor('#1744E6')
         .setDescription(
             'This **interface** can be used to manage temporary voice channels.\n' +
-            'More options are available with /voice commands.'
+            'Press the **HELP** button below to learn how to use each feature.'
         )
         .setImage('attachment://interface-legend.png');
 
