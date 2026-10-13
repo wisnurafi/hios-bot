@@ -1,8 +1,9 @@
 // tempvoiceInterface.js — TempVoice-style owner control panel for Join-to-Create temp channels.
 //
 // A persistent `#interface` text channel holds one embed with 17 buttons
-// (NAME, LIMIT, WAITING ROOM, REGION, HELP / INVITE, KICK, BLOCK, UNBLOCK /
-// PRIVACY, VISIBILITY, TRUST, UNTRUST / CLAIM, TRANSFER, CHAT, DELETE). Only the recorded owner
+// (NAME, LIMIT, WAITING ROOM, REGION / INVITE, KICK, BLOCK, UNBLOCK /
+// PRIVACY, VISIBILITY, TRUST, UNTRUST / CLAIM, TRANSFER, CHAT, DELETE /
+// HELP — alone in the last row, like in the legend image). Only the recorded owner
 // of a temporary voice channel may use the actions; everyone else gets an
 // ephemeral denial. Dynamic pickers (member lists, regions) are served as
 // ephemeral select menus built at click time.
@@ -66,7 +67,6 @@ const PANEL_BUTTONS = [
         { id: 'limit', label: 'LIMIT', icon: 'limit', emoji: '🔢', style: ButtonStyle.Secondary },
         { id: 'waitingroom', label: 'WAITING ROOM', icon: 'waitingroom', emoji: '🚪', style: ButtonStyle.Secondary },
         { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
-        { id: 'help', label: 'HELP', icon: 'help', emoji: '❓', style: ButtonStyle.Secondary },
     ],
     [
         { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Secondary },
@@ -85,6 +85,9 @@ const PANEL_BUTTONS = [
         { id: 'transfer', label: 'TRANSFER', icon: 'transfer', emoji: '🔄', style: ButtonStyle.Secondary },
         { id: 'chat', label: 'CHAT', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
         { id: 'delete', label: 'DELETE', icon: 'delete', emoji: '🗑️', style: ButtonStyle.Secondary },
+    ],
+    [
+        { id: 'help', label: 'HELP', icon: 'help', emoji: '❓', style: ButtonStyle.Secondary },
     ],
 ];
 
@@ -930,9 +933,9 @@ async function cancelDelete(interaction, client) {
 
 // HELP — ephemeral "how to use" guide. Plain content (no embed) so it is
 // immune to the global embed monkey-patch in src/utils/embeds.js.
-async function sendHelp(interaction, client) {
-    const ctx = await getOwnerContext(interaction, client);
-    if (!ctx) return;
+// Unlike every other button, this one needs no temp channel: anyone can
+// read the guide without owning (or even having) a room.
+async function sendHelp(interaction, _client) {
 
     await InteractionHelper.safeReply(interaction, {
         content: [
