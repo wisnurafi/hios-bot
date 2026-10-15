@@ -84,12 +84,12 @@ export function resolvePostgresPoolConfig() {
     const sharedOptions = {
         max: parseInt(process.env.POSTGRES_MAX_CONNECTIONS) || 20,
         min: parseInt(process.env.POSTGRES_MIN_CONNECTIONS) || 0, // 0: pg idleTimeout closes idle conns itself; avoids Neon server-side kills of permanent min-conns (log noise)
-        idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
+        idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 10000, // 10s: recycle idle clients faster than server-side idle kills (~daily "Connection terminated unexpectedly")
         connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 30000, // 30s: covers Neon free-tier cold start (10-30s wake)
         application_name: 'hios-bot',
         statement_timeout: process.env.NODE_ENV === 'production' ? 30000 : 0,
         keepalives: 1,
-        keepalives_idle: 30,
+        keepalives_idle: 10, // 10s: beat middlebox NAT timeouts on budget hosts
         ssl,
     };
 
@@ -121,13 +121,13 @@ export const pgConfig = {
 
         max: parseInt(process.env.POSTGRES_MAX_CONNECTIONS) || 20,
         min: parseInt(process.env.POSTGRES_MIN_CONNECTIONS) || 0, // 0: pg idleTimeout closes idle conns itself; avoids Neon server-side kills of permanent min-conns (log noise)
-        idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 30000,
+        idleTimeoutMillis: parseInt(process.env.POSTGRES_IDLE_TIMEOUT) || 10000, // 10s: recycle idle clients faster than server-side idle kills (~daily "Connection terminated unexpectedly")
         connectionTimeoutMillis: parseInt(process.env.POSTGRES_CONNECTION_TIMEOUT) || 30000, // 30s: covers Neon free-tier cold start (10-30s wake)
 
         application_name: 'hios-bot',
         statement_timeout: process.env.NODE_ENV === 'production' ? 30000 : 0,
         keepalives: 1,
-        keepalives_idle: 30,
+        keepalives_idle: 10, // 10s: beat middlebox NAT timeouts on budget hosts
 
         retries: parseInt(process.env.POSTGRES_RETRIES) || 3,
         backoffBase: parseInt(process.env.POSTGRES_BACKOFF_BASE) || 100,

@@ -41,6 +41,36 @@ function normalizeTimestampInput(value, fallback = new Date()) {
     return !Number.isNaN(parsedDate.getTime()) ? parsedDate : fallback;
 }
 
+// Signatures of a server-killed (dead) pooled connection: the TCP under an
+// idle client was terminated server-side (Neon suspend/proxy) or by a
+// middlebox/network blip (observed ~daily on the Wispbyte host). pg
+// discards such clients automatically, so replaying the query once on a
+// fresh client is safe — the failed query never reached the server.
+const CONNECTION_DEAD_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ENOTFOUND']);
+
+export function isConnectionDeadError(error) {
+    if (!error) return false;
+    if (CONNECTION_DEAD_CODES.has(error.code)) return true;
+    return /connection terminated unexpectedly/i.test(String(error.message || error));
+}
+
+// Wraps pool.query so a query that draws a server-killed (dead) pooled
+// client is retried exactly once on a fresh client. Genuine query errors
+// (syntax, constraints, statement timeout) are never retried.
+export function withConnRetry(pool) {
+    const rawQuery = pool.query.bind(pool);
+    pool.query = async (...args) => {
+        try {
+            return await rawQuery(...args);
+        } catch (error) {
+            if (!isConnectionDeadError(error)) throw error;
+            logger.warn(`PostgreSQL query hit a dead pooled connection (${error.message}); retrying once on a fresh client`);
+            return await rawQuery(...args);
+        }
+    };
+    return pool;
+}
+
 class PostgreSQLDatabase {
     constructor() {
         this.pool = null;
@@ -72,8 +102,18 @@ class PostgreSQLDatabase {
                 await new Promise(resolve => setTimeout(resolve, 100));
 
                 this.pool = new pg.Pool(resolvePostgresPoolConfig());
+                withConnRetry(this.pool);
 
-                this.pool.on('error', (error, client) => {
+                this.pool.on('error', (error) => {
+                    // Idle pooled clients killed server-side are benign: pg
+                    // already discarded the client and withConnRetry replays
+                    // the lost query. One line at warn keeps the signal in
+                    // the logs without the scary stack trace; anything
+                    // unexpected still logs at error with its stack.
+                    if (isConnectionDeadError(error)) {
+                        logger.warn(`PostgreSQL pool error (idle client killed server-side, self-healed): ${error.message}`);
+                        return;
+                    }
                     logger.error('PostgreSQL pool error:', error);
                 });
 
