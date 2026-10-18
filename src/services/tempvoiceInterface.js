@@ -1459,10 +1459,18 @@ async function submitLimit(interaction, client) {
 }
 
 // THREAD — create a thread in the voice channel's text chat.
-// NOTE: discord.js VoiceChannel has no `.threads` manager (verified on the
-// prototype — `channel.threads` is undefined), so this goes through the REST
-// API directly: POST /channels/{voiceChannel.id}/threads (type 11 = public
-// thread). Do NOT "simplify" this back to channel.threads.create().
+// Discord only supports threads in voice chat STARTED FROM a message:
+// - VoiceChannel has no .threads manager (channel.threads.create() throws)
+// - POST /channels/{id}/threads without a message id → "Cannot execute
+//   action on this channel type" (verified live 2026-10-19)
+// - Message.startThread() has a discord.js client-side guard rejecting
+//   non-text channels (ErrorCodes.MessageThreadParent — read it in
+//   node_modules/discord.js/src/structures/Message.js)
+// So: post a starter message (mentions disabled), hit the from-message
+// endpoint directly via REST — POST
+// /channels/{channelId}/messages/{messageId}/threads, the same endpoint the
+// Discord client uses — then delete the scaffolding message. The thread
+// itself survives the deletion.
 async function submitThread(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
@@ -1474,12 +1482,18 @@ async function submitThread(interaction, client) {
         return;
     }
 
+    let starter = null;
     try {
-        const data = await client.rest.post(Routes.threads(ctx.channel.id), {
+        starter = await ctx.channel.send({
+            content: `🧵 **${title}**`,
+            allowedMentions: { parse: [] },
+        });
+        const data = await client.rest.post(Routes.threads(ctx.channel.id, starter.id), {
             body: {
                 name: title,
-                autoArchiveDuration: 60,
-                type: ChannelType.PublicThread,
+                // NOTE: snake_case — @discordjs/rest does NOT auto-convert
+                // camelCase body keys (see GuildTextThreadManager#create).
+                auto_archive_duration: 60,
             },
             reason: 'TempVoice thread created via interface',
         });
@@ -1494,6 +1508,8 @@ async function submitThread(interaction, client) {
         await InteractionHelper.safeEditReply(interaction, {
             content: '❌ Failed to create the thread. Check my permissions and try again.',
         });
+    } finally {
+        if (starter) await starter.delete().catch(() => {});
     }
 }
 
