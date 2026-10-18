@@ -27,7 +27,8 @@ export default {
                         .addChoices(
                             { name: "members + bots", value: "members" },
                             { name: "members only", value: "members_only" },
-                            { name: "bots only", value: "bots" }
+                            { name: "bots only", value: "bots" },
+                            { name: "online members", value: "online" }
                         )
                 )
                 .addStringOption(option =>
@@ -71,7 +72,8 @@ export default {
                         .addChoices(
                             { name: "members + bots", value: "members" },
                             { name: "members only", value: "members_only" },
-                            { name: "bots only", value: "bots" }
+                            { name: "bots only", value: "bots" },
+                            { name: "online members", value: "online" }
                         )
                 )
         )

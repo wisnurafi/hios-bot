@@ -21,6 +21,11 @@ export const COUNTER_TYPE_CONFIG = {
     label: 'Bots Only',
     baseName: 'Bots',
     emoji: '🤖'
+  },
+  online: {
+    label: 'Online Members',
+    baseName: 'Online',
+    emoji: '🟢'
   }
 };
 
@@ -98,10 +103,19 @@ export async function getGuildCounterStats(guild) {
   const totalCount = typeof guild.memberCount === 'number' ? guild.memberCount : memberCollection.size;
   const humanCount = Math.max(totalCount - botCount, 0);
 
+  // Online = anyone whose presence is online/idle/dnd (bots included, same
+  // as Discord's own member list). Requires the GuildPresences privileged
+  // intent — without it member.presence is null and this reads 0.
+  const onlineCount = memberCollection.filter((member) => {
+    const status = member.presence?.status;
+    return status === 'online' || status === 'idle' || status === 'dnd';
+  }).size;
+
   return {
     totalCount,
     botCount,
-    humanCount
+    humanCount,
+    onlineCount
   };
 }
 
@@ -115,6 +129,8 @@ export async function getCounterCount(guild, type) {
       return stats.botCount;
     case 'members_only':
       return stats.humanCount;
+    case 'online':
+      return stats.onlineCount;
     default:
       return null;
   }

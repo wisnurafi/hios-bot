@@ -140,6 +140,8 @@ function getCurrentCount(stats, type) {
             return stats.botCount;
         case "members_only":
             return stats.humanCount;
+        case "online":
+            return stats.onlineCount;
         default:
             return 0;
     }

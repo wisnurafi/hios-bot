@@ -34,6 +34,11 @@ class HiosBot extends Client {
         // NOTE: GuildBans removed (2026-10-12) — no ban event listeners or
         // bans.cache usage anywhere; the only touch is guild.bans.fetch()
         // (REST), which does not need the intent.
+        // GuildPresences (2026-10-18): privileged intent, required for the
+        // ServerStats "online" counter (member.presence is null without it).
+        // Must ALSO be enabled in the Discord Developer Portal → Bot →
+        // Privileged Gateway Intents, otherwise the counter reads 0.
+        GatewayIntentBits.GuildPresences,
       ],
       // NOTE (2026-10-12): sweep cached messages older than 1h, every 30m.
       // Members are intentionally NOT swept: leveling relies on
