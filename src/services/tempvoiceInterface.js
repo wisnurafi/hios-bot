@@ -17,7 +17,6 @@ import {
     MessageFlags,
     ModalBuilder,
     PermissionFlagsBits,
-    Routes,
     StringSelectMenuBuilder,
     TextInputBuilder,
     TextInputStyle,
@@ -262,6 +261,7 @@ export function normalizeTempInfo(raw) {
         hidden: info.hidden === true,
         chatEnabled: info.chatEnabled !== false,
         waitingRoom: info.waitingRoom && typeof info.waitingRoom === 'object' ? info.waitingRoom : null,
+        threadId: typeof info.threadId === 'string' ? info.threadId : null,
     };
 }
 
@@ -545,8 +545,8 @@ async function showLimitModal(interaction, client) {
     await InteractionHelper.safeShowModal(interaction, modal);
 }
 
-// THREAD — create a thread inside the voice channel's text chat (like the
-// original TempVoice bot). The owner picks the thread title via a modal.
+// THREAD — open the modal to create a private thread in the interface
+// channel (like the original TempVoice bot).
 async function showThreadModal(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
@@ -1021,7 +1021,7 @@ async function sendHelp(interaction, _client) {
             '  - **Visible** / **Invisible** — when invisible, only you and trusted users can see the room.',
             '  - **Chat** / **Close Chat** — open or close the text chat inside your voice channel.',
             '• **WAITING ROOM** — newcomers wait in a separate room until you let them in.',
-            '• **THREAD** — create a thread inside your voice channel for side discussions.',
+            '• **THREAD** — create a private thread in the #interface channel for side discussions (deleted with your room).',
             '',
             '**Row 2 — Access**',
             '• **TRUST** — give someone permanent access: they can join even when locked and see the room even when invisible. No need for them to join first.',
@@ -1458,19 +1458,13 @@ async function submitLimit(interaction, client) {
     }
 }
 
-// THREAD — create a thread in the voice channel's text chat.
-// Discord only supports threads in voice chat STARTED FROM a message:
-// - VoiceChannel has no .threads manager (channel.threads.create() throws)
-// - POST /channels/{id}/threads without a message id → "Cannot execute
-//   action on this channel type" (verified live 2026-10-19)
-// - Message.startThread() has a discord.js client-side guard rejecting
-//   non-text channels (ErrorCodes.MessageThreadParent — read it in
-//   node_modules/discord.js/src/structures/Message.js)
-// So: post a starter message (mentions disabled), hit the from-message
-// endpoint directly via REST — POST
-// /channels/{channelId}/messages/{messageId}/threads, the same endpoint the
-// Discord client uses — then delete the scaffolding message. The thread
-// itself survives the deletion.
+// THREAD — create a PRIVATE thread in the interface channel (like the
+// original TempVoice). Discord does not allow threads inside voice channels
+// at all ("Cannot execute action on this channel type" — verified live
+// 2026-10-19), so the thread "borrows" the #interface text channel instead.
+// The thread id is stored on the temp channel record so it gets deleted
+// together with the voice channel when the room empties (see
+// deleteTemporaryChannel in voiceStateUpdate.js).
 async function submitThread(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
@@ -1482,34 +1476,63 @@ async function submitThread(interaction, client) {
         return;
     }
 
-    let starter = null;
+    const guild = ctx.channel.guild;
+    const ownerId = ctx.info.ownerId;
+
     try {
-        starter = await ctx.channel.send({
-            content: `🧵 **${title}**`,
-            allowedMentions: { parse: [] },
-        });
-        const data = await client.rest.post(Routes.threads(ctx.channel.id, starter.id), {
-            body: {
-                name: title,
-                // NOTE: snake_case — @discordjs/rest does NOT auto-convert
-                // camelCase body keys (see GuildTextThreadManager#create).
-                auto_archive_duration: 60,
-            },
+        const config = await getJoinToCreateConfig(client, guild.id);
+        const interfaceChannel = config.interfaceChannelId
+            ? (guild.channels.cache.get(config.interfaceChannelId)
+                ?? await guild.channels.fetch(config.interfaceChannelId).catch(() => null))
+            : null;
+        if (!interfaceChannel || typeof interfaceChannel.threads?.create !== 'function') {
+            throw new Error('Interface channel not found');
+        }
+
+        // One thread per room: remove the previous one first.
+        const oldThreadId = ctx.info.threadId;
+        if (oldThreadId) {
+            const oldThread = guild.channels.cache.get(oldThreadId)
+                ?? await guild.channels.fetch(oldThreadId).catch(() => null);
+            if (oldThread) await oldThread.delete('TempVoice thread replaced').catch(() => {});
+        }
+
+        const thread = await interfaceChannel.threads.create({
+            name: title,
+            autoArchiveDuration: 60,
+            type: ChannelType.PrivateThread,
+            invitable: true,
             reason: 'TempVoice thread created via interface',
         });
-        const threadId = data?.id;
-        if (!threadId) throw new Error('Thread API returned no id');
-        await InteractionHelper.safeEditReply(interaction, {
-            content: `🧵 Thread created: <#${threadId}>\nAnyone who can see your voice channel can join the discussion there.`,
+
+        // Add the owner to the private thread explicitly first — if the
+        // mention below ever fails to send, they'd otherwise be locked out
+        // of their own thread with no visible error.
+        try {
+            await thread.members.add(ownerId);
+        } catch (addError) {
+            logger.warn(`TempVoice: could not add owner ${ownerId} to thread ${thread.id}: ${addError.message}`);
+        }
+
+        // Announce with a mention (like the original) — this also adds them.
+        await thread.send({
+            content: `<@${ownerId}>`,
+            allowedMentions: { users: [ownerId] },
+        }).catch((sendError) => {
+            logger.warn(`TempVoice: could not send mention in thread ${thread.id}: ${sendError.message}`);
         });
-        logger.info(`TempVoice: ${interaction.user.id} created thread ${threadId} in channel ${ctx.channel.id}`);
+
+        await updateTemporaryChannelInfo(client, guild.id, ctx.channel.id, { threadId: thread.id });
+
+        await InteractionHelper.safeEditReply(interaction, {
+            content: `🧵 Private thread created: ${thread}\nMention users inside to add them. The thread is deleted together with your voice channel.`,
+        });
+        logger.info(`TempVoice: ${ownerId} created thread ${thread.id} in interface channel ${interfaceChannel.id}`);
     } catch (error) {
         logger.error(`TempVoice thread creation failed: ${error.message}`);
         await InteractionHelper.safeEditReply(interaction, {
             content: '❌ Failed to create the thread. Check my permissions and try again.',
         });
-    } finally {
-        if (starter) await starter.delete().catch(() => {});
     }
 }
 

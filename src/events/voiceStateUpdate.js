@@ -268,8 +268,18 @@ userLimit: userLimit === 0 ? undefined : userLimit,
 
         async function deleteTemporaryChannel(client, channel, guildId) {
             try {
-                // TempVoice: remove the waiting room first, if one exists.
+                // TempVoice: remove the thread first, if one exists. Threads
+                // live in the interface channel and must die with the room.
                 const tempInfo = await getTemporaryChannelInfo(client, guildId, channel.id).catch(() => null);
+                const threadId = tempInfo?.threadId;
+                if (threadId) {
+                    const thread = channel.guild.channels.cache.get(threadId)
+                        ?? await channel.guild.channels.fetch(threadId).catch(() => null);
+                    if (thread) {
+                        await thread.delete('TempVoice thread cleanup').catch(() => {});
+                    }
+                }
+                // TempVoice: remove the waiting room first, if one exists.
                 const wrChannelId = tempInfo?.waitingRoom?.channelId;
                 if (wrChannelId) {
                     const wrChannel = channel.guild.channels.cache.get(wrChannelId)
