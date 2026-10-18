@@ -1,11 +1,11 @@
 // tempvoiceInterface.js — TempVoice-style owner control panel for Join-to-Create temp channels.
 //
-// A persistent `#interface` text channel holds one embed with 17 buttons
-// (NAME, LIMIT, WAITING ROOM, REGION, HELP / INVITE, KICK, BLOCK, UNBLOCK /
-// PRIVACY, VISIBILITY, TRUST, UNTRUST / CLAIM, TRANSFER, CHAT, DELETE). Only the recorded owner
+// A persistent `#interface` text channel holds one embed with 16 buttons
+// (NAME, LIMIT, WAITING ROOM, REGION, INVITE / KICK, BLOCK, UNBLOCK, PRIVACY,
+// TRUST / UNTRUST, CLAIM, TRANSFER, THREAD, DELETE / HELP). Only the recorded owner
 // of a temporary voice channel may use the actions; everyone else gets an
-// ephemeral denial. Dynamic pickers (member lists, regions) are served as
-// ephemeral select menus built at click time.
+// ephemeral denial. Dynamic pickers (member lists, regions, privacy options)
+// are served as ephemeral select menus built at click time.
 
 import {
     ActionRowBuilder,
@@ -60,31 +60,31 @@ export const OWNER_OVERWRITES = {
 
 // All panel buttons are Secondary (gray) — monochrome honeypot-interface style.
 // The icons carry the meaning: gray line art + a few colored accents.
+// Layout is 5 per row (5+5+5+1), with HELP alone on the last row.
 const PANEL_BUTTONS = [
     [
         { id: 'name', label: 'NAME', icon: 'name', emoji: '🏷️', style: ButtonStyle.Secondary },
         { id: 'limit', label: 'LIMIT', icon: 'limit', emoji: '🔢', style: ButtonStyle.Secondary },
         { id: 'waitingroom', label: 'WAITING ROOM', icon: 'waitingroom', emoji: '🚪', style: ButtonStyle.Secondary },
         { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
-        { id: 'help', label: 'HELP', icon: 'help', emoji: '❓', style: ButtonStyle.Secondary },
+        { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Secondary },
     ],
     [
-        { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Secondary },
         { id: 'kick', label: 'KICK', icon: 'kick', emoji: '🦵', style: ButtonStyle.Secondary },
         { id: 'block', label: 'BLOCK', icon: 'block', emoji: '⛔', style: ButtonStyle.Secondary },
         { id: 'unblock', label: 'UNBLOCK', icon: 'unblock', emoji: '🔓', style: ButtonStyle.Secondary },
-    ],
-    [
         { id: 'privacy', label: 'PRIVACY', icon: 'privacy', emoji: '🔒', style: ButtonStyle.Secondary },
-        { id: 'visibility', label: 'VISIBILITY', icon: 'visibility', emoji: '👁️', style: ButtonStyle.Secondary },
         { id: 'trust', label: 'TRUST', icon: 'trust', emoji: '✅', style: ButtonStyle.Secondary },
-        { id: 'untrust', label: 'UNTRUST', icon: 'untrust', emoji: '❌', style: ButtonStyle.Secondary },
     ],
     [
+        { id: 'untrust', label: 'UNTRUST', icon: 'untrust', emoji: '❌', style: ButtonStyle.Secondary },
         { id: 'claim', label: 'CLAIM', icon: 'claim', emoji: '👑', style: ButtonStyle.Secondary },
         { id: 'transfer', label: 'TRANSFER', icon: 'transfer', emoji: '🔄', style: ButtonStyle.Secondary },
-        { id: 'chat', label: 'CHAT', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
+        { id: 'thread', label: 'THREAD', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
         { id: 'delete', label: 'DELETE', icon: 'delete', emoji: '🗑️', style: ButtonStyle.Secondary },
+    ],
+    [
+        { id: 'help', label: 'HELP', icon: 'help', emoji: '❓', style: ButtonStyle.Secondary },
     ],
 ];
 
@@ -110,7 +110,7 @@ function interfaceAssetHash(key) {
 }
 
 /**
- * Ensure the 17 panel icons exist as custom emojis in this guild.
+ * Ensure the 16 panel icons exist as custom emojis in this guild.
  * Idempotent: reuses stored emojis that still exist, uploads only what's
  * missing. Returns a map of icon key -> emoji mention string.
  *
@@ -544,63 +544,162 @@ async function showLimitModal(interaction, client) {
     await InteractionHelper.safeShowModal(interaction, modal);
 }
 
-async function togglePrivacy(interaction, client) {
+// THREAD — create a thread inside the voice channel's text chat (like the
+// original TempVoice bot). The owner picks the thread title via a modal.
+async function showThreadModal(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
-    await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
 
-    const { channel, info } = ctx;
-    try {
-        if (info.locked) {
-            await channel.permissionOverwrites.edit(channel.guild.id, { Connect: true });
-            await updateTempState(client, channel.guild.id, channel.id, { locked: false });
-            await InteractionHelper.safeEditReply(interaction, {
-                content: '🔓 **Channel unlocked** — everyone can join again.',
-            });
-        } else {
-            await channel.permissionOverwrites.edit(channel.guild.id, { Connect: false });
-            await updateTempState(client, channel.guild.id, channel.id, { locked: true });
-            await InteractionHelper.safeEditReply(interaction, {
-                content: '🔒 **Channel locked** — only you and trusted users can join.\nUse TRUST to let specific people in.',
-            });
-        }
-    } catch (error) {
-        logger.error(`TempVoice togglePrivacy failed: ${error.message}`);
-        await InteractionHelper.safeEditReply(interaction, { content: '❌ Failed to change privacy. Check my permissions and try again.' });
-    }
+    const modal = new ModalBuilder()
+        .setCustomId('tempvoice_modal:thread')
+        .setTitle('Create a Thread');
+
+    modal.addComponents(
+        new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('thread_title')
+                .setLabel('Thread title')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder("e.g. Planning tonight's session")
+                .setMinLength(1)
+                .setMaxLength(100)
+                .setRequired(true)
+        )
+    );
+
+    await InteractionHelper.safeShowModal(interaction, modal);
 }
 
-async function toggleVisibility(interaction, client) {
+// ---------------------------------------------------------------------------
+// Privacy menu — the PRIVACY button opens a select menu with Lock, Unlock,
+// Visible, Invisible, Chat and Close Chat, mirroring the original TempVoice.
+// ---------------------------------------------------------------------------
+
+const PRIVACY_OPTIONS = [
+    { value: 'lock', label: 'Lock', emoji: '🔒', description: 'Lock the channel — only trusted users can join' },
+    { value: 'unlock', label: 'Unlock', emoji: '🔓', description: 'Unlock the channel — everyone can join' },
+    { value: 'visible', label: 'Visible', emoji: '👁️', description: 'Make the channel visible to everyone' },
+    { value: 'invisible', label: 'Invisible', emoji: '🙈', description: 'Hide the channel — only you and trusted users see it' },
+    { value: 'chat', label: 'Chat', emoji: '💬', description: 'Open the text chat in your voice channel' },
+    { value: 'closechat', label: 'Close Chat', emoji: '🚫', description: 'Close the text chat in your voice channel' },
+];
+
+async function showPrivacyMenu(interaction, client) {
+    const ctx = await getOwnerContext(interaction, client);
+    if (!ctx) return;
+
+    const select = new StringSelectMenuBuilder()
+        .setCustomId('tempvoice_select:privacy')
+        .setPlaceholder('Choose a privacy option')
+        .setMinValues(1)
+        .setMaxValues(1)
+        .addOptions(PRIVACY_OPTIONS);
+
+    await InteractionHelper.safeReply(interaction, {
+        content: '🔒 **Privacy** — choose what to change about your channel:',
+        components: [new ActionRowBuilder().addComponents(select)],
+        flags: MessageFlags.Ephemeral,
+    });
+}
+
+// Explicit privacy setters shared by the privacy menu options. Idempotent:
+// picking an option that already matches the current state just confirms it.
+
+async function setChannelLock(interaction, client, channel, info, locked) {
+    if (info.locked === locked) {
+        await InteractionHelper.safeEditReply(interaction, {
+            content: locked ? '🔒 Channel is already locked.' : '🔓 Channel is already unlocked.',
+            components: [],
+        });
+        return;
+    }
+    await channel.permissionOverwrites.edit(channel.guild.id, { Connect: !locked });
+    await updateTempState(client, channel.guild.id, channel.id, { locked });
+    await InteractionHelper.safeEditReply(interaction, {
+        content: locked
+            ? '🔒 **Channel locked** — only you and trusted users can join.\nUse TRUST to let specific people in.'
+            : '🔓 **Channel unlocked** — everyone can join again.',
+        components: [],
+    });
+}
+
+async function setChannelHidden(interaction, client, channel, info, hidden) {
+    if (info.hidden === hidden) {
+        await InteractionHelper.safeEditReply(interaction, {
+            content: hidden ? '🙈 Channel is already invisible.' : '👁️ Channel is already visible.',
+            components: [],
+        });
+        return;
+    }
+    const guild = channel.guild;
+    if (hidden) {
+        await channel.permissionOverwrites.edit(guild.id, { ViewChannel: false });
+        // Owner always keeps ViewChannel (also set at creation); trusted users can see too.
+        for (const userId of [info.ownerId, ...info.trusted]) {
+            if (!userId) continue;
+            await channel.permissionOverwrites.edit(userId, { ViewChannel: true }).catch(() => {});
+        }
+    } else {
+        await channel.permissionOverwrites.edit(guild.id, { ViewChannel: null });
+        for (const userId of info.trusted) {
+            await channel.permissionOverwrites.edit(userId, { ViewChannel: null }).catch(() => {});
+        }
+    }
+    await updateTempState(client, guild.id, channel.id, { hidden });
+    await InteractionHelper.safeEditReply(interaction, {
+        content: hidden
+            ? '🙈 **Channel is now invisible** — only you and trusted users can see it.\nUse TRUST to let specific people in.'
+            : '👁️ **Channel is now visible** — everyone can see it again.',
+        components: [],
+    });
+}
+
+async function setChannelChat(interaction, client, channel, info, enabled) {
+    if (info.chatEnabled === enabled) {
+        await InteractionHelper.safeEditReply(interaction, {
+            content: enabled ? '💬 Text chat is already open.' : '🚫 Text chat is already closed.',
+            components: [],
+        });
+        return;
+    }
+    await channel.permissionOverwrites.edit(channel.guild.id, { SendMessages: enabled });
+    await updateTempState(client, channel.guild.id, channel.id, { chatEnabled: enabled });
+    await InteractionHelper.safeEditReply(interaction, {
+        content: enabled
+            ? '💬 **Text chat opened** for your voice channel.'
+            : '🚫 **Text chat closed** for your voice channel.',
+        components: [],
+    });
+}
+
+async function selectPrivacy(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
     await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
 
     const { channel, info } = ctx;
+    const choice = interaction.values[0];
+
     try {
-        if (info.hidden) {
-            await channel.permissionOverwrites.edit(channel.guild.id, { ViewChannel: null });
-            for (const userId of info.trusted) {
-                await channel.permissionOverwrites.edit(userId, { ViewChannel: null }).catch(() => {});
-            }
-            await updateTempState(client, channel.guild.id, channel.id, { hidden: false });
-            await InteractionHelper.safeEditReply(interaction, {
-                content: '👁️ **Channel is now visible** — everyone can see it again.',
-            });
-        } else {
-            await channel.permissionOverwrites.edit(channel.guild.id, { ViewChannel: false });
-            // Owner always keeps ViewChannel (also set at creation); trusted users can see too.
-            for (const userId of [info.ownerId, ...info.trusted]) {
-                if (!userId) continue;
-                await channel.permissionOverwrites.edit(userId, { ViewChannel: true }).catch(() => {});
-            }
-            await updateTempState(client, channel.guild.id, channel.id, { hidden: true });
-            await InteractionHelper.safeEditReply(interaction, {
-                content: '👁️ **Channel is now hidden** — only you and trusted users can see it.\nUse TRUST to let specific people in.',
-            });
+        switch (choice) {
+            case 'lock': return setChannelLock(interaction, client, channel, info, true);
+            case 'unlock': return setChannelLock(interaction, client, channel, info, false);
+            case 'visible': return setChannelHidden(interaction, client, channel, info, false);
+            case 'invisible': return setChannelHidden(interaction, client, channel, info, true);
+            case 'chat': return setChannelChat(interaction, client, channel, info, true);
+            case 'closechat': return setChannelChat(interaction, client, channel, info, false);
+            default:
+                await InteractionHelper.safeEditReply(interaction, {
+                    content: '❌ Unknown privacy option.',
+                    components: [],
+                });
         }
     } catch (error) {
-        logger.error(`TempVoice toggleVisibility failed: ${error.message}`);
-        await InteractionHelper.safeEditReply(interaction, { content: '❌ Failed to change visibility. Check my permissions and try again.' });
+        logger.error(`TempVoice privacy option "${choice}" failed: ${error.message}`);
+        await InteractionHelper.safeEditReply(interaction, {
+            content: '❌ Failed to apply that privacy option. Check my permissions and try again.',
+            components: [],
+        });
     }
 }
 
@@ -651,32 +750,6 @@ async function toggleWaitingRoom(interaction, client) {
     } catch (error) {
         logger.error(`TempVoice toggleWaitingRoom failed: ${error.message}`);
         await InteractionHelper.safeEditReply(interaction, { content: '❌ Failed to toggle the waiting room. Check my permissions and try again.' });
-    }
-}
-
-async function toggleChat(interaction, client) {
-    const ctx = await getOwnerContext(interaction, client);
-    if (!ctx) return;
-    await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
-
-    const { channel, info } = ctx;
-    try {
-        if (info.chatEnabled) {
-            await channel.permissionOverwrites.edit(channel.guild.id, { SendMessages: false });
-            await updateTempState(client, channel.guild.id, channel.id, { chatEnabled: false });
-            await InteractionHelper.safeEditReply(interaction, {
-                content: '💬 **Text chat disabled** for this voice channel.',
-            });
-        } else {
-            await channel.permissionOverwrites.edit(channel.guild.id, { SendMessages: true });
-            await updateTempState(client, channel.guild.id, channel.id, { chatEnabled: true });
-            await InteractionHelper.safeEditReply(interaction, {
-                content: '💬 **Text chat enabled** for this voice channel.',
-            });
-        }
-    } catch (error) {
-        logger.error(`TempVoice toggleChat failed: ${error.message}`);
-        await InteractionHelper.safeEditReply(interaction, { content: '❌ Failed to toggle text chat. Check my permissions and try again.' });
     }
 }
 
@@ -937,31 +1010,34 @@ async function sendHelp(interaction, _client) {
     await InteractionHelper.safeReply(interaction, {
         content: [
             '**TempVoice — How to use**',
-            'Join the "Join to Create" voice channel and you get your own temporary room. Use the buttons in #interface to control it — only you (the owner) can use them.',
+            'Join the "Join to Create" voice channel and you get your own temporary room. Use the buttons in #interface to control it — only you (the owner) can use them. The guide below follows the button rows top to bottom.',
             '',
-            '**Room setup**',
+            '**Row 1 — Room setup**',
             '• **NAME** — rename your room (leave empty to reset to the default name).',
             '• **LIMIT** — max users allowed in (0 = unlimited, max 99).',
             '• **WAITING ROOM** — newcomers wait in a separate room until you let them in.',
             '• **REGION** — set the voice region for better connection quality.',
-            '',
-            '**Moderation**',
             '• **INVITE** — pull someone into your room (they become trusted automatically).',
+            '',
+            '**Row 2 — Moderation & access**',
             '• **KICK** — disconnect someone from your room.',
             '• **BLOCK** — disconnect someone and prevent them from rejoining.',
             '• **UNBLOCK** — lift a block.',
+            '• **PRIVACY** — open the privacy menu:',
+            '  - **Lock** / **Unlock** — when locked, only you and trusted users can join.',
+            '  - **Visible** / **Invisible** — when invisible, only you and trusted users can see the room.',
+            '  - **Chat** / **Close Chat** — open or close the text chat inside your voice channel.',
+            '• **TRUST** — give someone permanent access: they can join even when locked and see the room even when invisible. No need for them to join first.',
             '',
-            '**Access**',
-            '• **PRIVACY** — lock/unlock the room. When locked, only trusted users can join.',
-            '• **VISIBILITY** — hide/unhide the room. When hidden, only you and trusted users can see it.',
-            '• **TRUST** — give someone permanent access: they can join even when locked and see the room even when hidden. No need for them to join first.',
+            '**Row 3 — Ownership & extras**',
             '• **UNTRUST** — remove someone from the trusted list.',
-            '',
-            '**Ownership**',
             '• **CLAIM** — take ownership of a room whose owner left.',
             '• **TRANSFER** — hand ownership to someone else.',
-            '• **CHAT** — enable/disable the text chat inside your voice channel.',
+            '• **THREAD** — create a thread inside your voice channel for side discussions.',
             '• **DELETE** — delete your room (asks for confirmation first).',
+            '',
+            '**Row 4**',
+            '• **HELP** — show this guide again.',
         ].join('\n'),
         flags: MessageFlags.Ephemeral,
     });
@@ -970,10 +1046,9 @@ async function sendHelp(interaction, _client) {
 const BUTTON_ACTIONS = {
     name: showRenameModal,
     limit: showLimitModal,
-    privacy: togglePrivacy,
-    visibility: toggleVisibility,
+    privacy: showPrivacyMenu,
     waitingroom: toggleWaitingRoom,
-    chat: toggleChat,
+    thread: showThreadModal,
     trust: sendTrustPicker,
     untrust: sendUntrustPicker,
     invite: sendInvitePicker,
@@ -1299,6 +1374,7 @@ const SELECT_ACTIONS = {
     block: selectBlock,
     unblock: selectUnblock,
     transfer: selectTransfer,
+    privacy: selectPrivacy,
 };
 
 export async function dispatchTempVoiceSelect(interaction, client, action) {
@@ -1381,9 +1457,40 @@ async function submitLimit(interaction, client) {
     }
 }
 
+// CHAT — create the thread in the voice channel's text chat.
+async function submitThread(interaction, client) {
+    const ctx = await getOwnerContext(interaction, client);
+    if (!ctx) return;
+    await InteractionHelper.safeDefer(interaction, { flags: MessageFlags.Ephemeral });
+
+    const title = sanitizeChannelName(interaction.fields.getTextInputValue('thread_title'));
+    if (!title) {
+        await InteractionHelper.safeEditReply(interaction, { content: '❌ Thread title cannot be empty.' });
+        return;
+    }
+
+    try {
+        const thread = await ctx.channel.threads.create({
+            name: title,
+            autoArchiveDuration: 60,
+            reason: 'TempVoice thread created via interface',
+        });
+        await InteractionHelper.safeEditReply(interaction, {
+            content: `🧵 Thread created: ${thread}\nAnyone who can see your voice channel can join the discussion there.`,
+        });
+        logger.info(`TempVoice: ${interaction.user.id} created thread ${thread.id} in channel ${ctx.channel.id}`);
+    } catch (error) {
+        logger.error(`TempVoice thread creation failed: ${error.message}`);
+        await InteractionHelper.safeEditReply(interaction, {
+            content: '❌ Failed to create the thread. Check my permissions and try again.',
+        });
+    }
+}
+
 const MODAL_ACTIONS = {
     rename: submitRename,
     limit: submitLimit,
+    thread: submitThread,
 };
 
 export async function dispatchTempVoiceModal(interaction, client, action) {
