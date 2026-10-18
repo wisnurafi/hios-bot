@@ -1,8 +1,8 @@
 // tempvoiceInterface.js — TempVoice-style owner control panel for Join-to-Create temp channels.
 //
 // A persistent `#interface` text channel holds one embed with 16 buttons
-// (NAME, LIMIT, WAITING ROOM, REGION, INVITE / KICK, BLOCK, UNBLOCK, PRIVACY,
-// TRUST / UNTRUST, CLAIM, TRANSFER, THREAD, DELETE / HELP). Only the recorded owner
+// (NAME, LIMIT, PRIVACY, WAITING ROOM, THREAD / TRUST, UNTRUST, INVITE, KICK,
+// REGION / BLOCK, UNBLOCK, CLAIM, TRANSFER, DELETE / HELP). Only the recorded owner
 // of a temporary voice channel may use the actions; everyone else gets an
 // ephemeral denial. Dynamic pickers (member lists, regions, privacy options)
 // are served as ephemeral select menus built at click time.
@@ -65,22 +65,22 @@ const PANEL_BUTTONS = [
     [
         { id: 'name', label: 'NAME', icon: 'name', emoji: '🏷️', style: ButtonStyle.Secondary },
         { id: 'limit', label: 'LIMIT', icon: 'limit', emoji: '🔢', style: ButtonStyle.Secondary },
+        { id: 'privacy', label: 'PRIVACY', icon: 'privacy', emoji: '🔒', style: ButtonStyle.Secondary },
         { id: 'waitingroom', label: 'WAITING ROOM', icon: 'waitingroom', emoji: '🚪', style: ButtonStyle.Secondary },
-        { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
-        { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Secondary },
+        { id: 'thread', label: 'THREAD', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
     ],
     [
+        { id: 'trust', label: 'TRUST', icon: 'trust', emoji: '✅', style: ButtonStyle.Secondary },
+        { id: 'untrust', label: 'UNTRUST', icon: 'untrust', emoji: '❌', style: ButtonStyle.Secondary },
+        { id: 'invite', label: 'INVITE', icon: 'invite', emoji: '📩', style: ButtonStyle.Secondary },
         { id: 'kick', label: 'KICK', icon: 'kick', emoji: '🦵', style: ButtonStyle.Secondary },
+        { id: 'region', label: 'REGION', icon: 'region', emoji: '🌍', style: ButtonStyle.Secondary },
+    ],
+    [
         { id: 'block', label: 'BLOCK', icon: 'block', emoji: '⛔', style: ButtonStyle.Secondary },
         { id: 'unblock', label: 'UNBLOCK', icon: 'unblock', emoji: '🔓', style: ButtonStyle.Secondary },
-        { id: 'privacy', label: 'PRIVACY', icon: 'privacy', emoji: '🔒', style: ButtonStyle.Secondary },
-        { id: 'trust', label: 'TRUST', icon: 'trust', emoji: '✅', style: ButtonStyle.Secondary },
-    ],
-    [
-        { id: 'untrust', label: 'UNTRUST', icon: 'untrust', emoji: '❌', style: ButtonStyle.Secondary },
         { id: 'claim', label: 'CLAIM', icon: 'claim', emoji: '👑', style: ButtonStyle.Secondary },
         { id: 'transfer', label: 'TRANSFER', icon: 'transfer', emoji: '🔄', style: ButtonStyle.Secondary },
-        { id: 'thread', label: 'THREAD', icon: 'chat', emoji: '💬', style: ButtonStyle.Secondary },
         { id: 'delete', label: 'DELETE', icon: 'delete', emoji: '🗑️', style: ButtonStyle.Secondary },
     ],
     [
@@ -1015,25 +1015,25 @@ async function sendHelp(interaction, _client) {
             '**Row 1 — Room setup**',
             '• **NAME** — rename your room (leave empty to reset to the default name).',
             '• **LIMIT** — max users allowed in (0 = unlimited, max 99).',
-            '• **WAITING ROOM** — newcomers wait in a separate room until you let them in.',
-            '• **REGION** — set the voice region for better connection quality.',
-            '• **INVITE** — pull someone into your room (they become trusted automatically).',
-            '',
-            '**Row 2 — Moderation & access**',
-            '• **KICK** — disconnect someone from your room.',
-            '• **BLOCK** — disconnect someone and prevent them from rejoining.',
-            '• **UNBLOCK** — lift a block.',
             '• **PRIVACY** — open the privacy menu:',
             '  - **Lock** / **Unlock** — when locked, only you and trusted users can join.',
             '  - **Visible** / **Invisible** — when invisible, only you and trusted users can see the room.',
             '  - **Chat** / **Close Chat** — open or close the text chat inside your voice channel.',
-            '• **TRUST** — give someone permanent access: they can join even when locked and see the room even when invisible. No need for them to join first.',
+            '• **WAITING ROOM** — newcomers wait in a separate room until you let them in.',
+            '• **THREAD** — create a thread inside your voice channel for side discussions.',
             '',
-            '**Row 3 — Ownership & extras**',
+            '**Row 2 — Access**',
+            '• **TRUST** — give someone permanent access: they can join even when locked and see the room even when invisible. No need for them to join first.',
             '• **UNTRUST** — remove someone from the trusted list.',
+            '• **INVITE** — pull someone into your room (they become trusted automatically).',
+            '• **KICK** — disconnect someone from your room.',
+            '• **REGION** — set the voice region for better connection quality.',
+            '',
+            '**Row 3 — Moderation & ownership**',
+            '• **BLOCK** — disconnect someone and prevent them from rejoining.',
+            '• **UNBLOCK** — lift a block.',
             '• **CLAIM** — take ownership of a room whose owner left.',
             '• **TRANSFER** — hand ownership to someone else.',
-            '• **THREAD** — create a thread inside your voice channel for side discussions.',
             '• **DELETE** — delete your room (asks for confirmation first).',
             '',
             '**Row 4**',
