@@ -17,6 +17,7 @@ import {
     MessageFlags,
     ModalBuilder,
     PermissionFlagsBits,
+    Routes,
     StringSelectMenuBuilder,
     TextInputBuilder,
     TextInputStyle,
@@ -1457,7 +1458,11 @@ async function submitLimit(interaction, client) {
     }
 }
 
-// CHAT — create the thread in the voice channel's text chat.
+// THREAD — create a thread in the voice channel's text chat.
+// NOTE: discord.js VoiceChannel has no `.threads` manager (verified on the
+// prototype — `channel.threads` is undefined), so this goes through the REST
+// API directly: POST /channels/{voiceChannel.id}/threads (type 11 = public
+// thread). Do NOT "simplify" this back to channel.threads.create().
 async function submitThread(interaction, client) {
     const ctx = await getOwnerContext(interaction, client);
     if (!ctx) return;
@@ -1470,15 +1475,20 @@ async function submitThread(interaction, client) {
     }
 
     try {
-        const thread = await ctx.channel.threads.create({
-            name: title,
-            autoArchiveDuration: 60,
+        const data = await client.rest.post(Routes.threads(ctx.channel.id), {
+            body: {
+                name: title,
+                autoArchiveDuration: 60,
+                type: ChannelType.PublicThread,
+            },
             reason: 'TempVoice thread created via interface',
         });
+        const threadId = data?.id;
+        if (!threadId) throw new Error('Thread API returned no id');
         await InteractionHelper.safeEditReply(interaction, {
-            content: `🧵 Thread created: ${thread}\nAnyone who can see your voice channel can join the discussion there.`,
+            content: `🧵 Thread created: <#${threadId}>\nAnyone who can see your voice channel can join the discussion there.`,
         });
-        logger.info(`TempVoice: ${interaction.user.id} created thread ${thread.id} in channel ${ctx.channel.id}`);
+        logger.info(`TempVoice: ${interaction.user.id} created thread ${threadId} in channel ${ctx.channel.id}`);
     } catch (error) {
         logger.error(`TempVoice thread creation failed: ${error.message}`);
         await InteractionHelper.safeEditReply(interaction, {
